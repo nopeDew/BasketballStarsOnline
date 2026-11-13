@@ -2,7 +2,7 @@
   "name": "basketball-stars-online",
   "version": "1.0.0",
   "private": true,
-  "description": "Online 1v1 lobby server for Basketball Stars",
+  "description": "Real-time server-authoritative 1v1 basketball game with private rooms",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
