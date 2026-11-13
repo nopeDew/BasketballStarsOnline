@@ -67,7 +67,7 @@ socket.on("blocked",e=>notify(e.player+" BLOCK!"));socket.on("stolen",e=>notify(
 socket.on("periodUpdate",e=>notify("OVERTIME "+e.overtime));
 socket.on("gameOver",e=>{$("endOverlay").classList.remove("hidden");$("resultTitle").textContent=e.winner?e.winner+" WINS":"IT'S A TIE";$("resultText").textContent=e.scores.map(p=>p.name+": "+p.score).join("  •  ")});
 socket.on("opponentLeft",()=>{lastState=null;$("game").classList.add("hidden");$("lobby").classList.remove("hidden");$("ready").disabled=false;say("Your opponent left. Invite someone else with the same room code.")});
-$("back").onclick=()=>{keys={};$("game").classList.add("hidden");$("lobby").classList.remove("hidden");say("Back in the room. Ready up when you're set.")};
+$("back").onclick=()=>{socket.emit("leaveRoom");keys={};room=null;mySide=null;lastState=null;$("game").classList.add("hidden");$("lobby").classList.remove("hidden");$("roomInfo").classList.add("hidden");$("roomCode").value="";say("You left the court. Create or join another room.")};
 $("rematch").onclick=()=>{$("endOverlay").classList.add("hidden");$("game").classList.add("hidden");$("lobby").classList.remove("hidden");$("ready").disabled=false;say("Ready up for a rematch.")};
 function updateHud(s){const p=s.players||[];const a=p.find(x=>x.side===1),b=p.find(x=>x.side===2);if(a){$("p1name").textContent=a.name.toUpperCase();$("p1score").textContent=a.score}if(b){$("p2name").textContent=b.name.toUpperCase();$("p2score").textContent=b.score}$("clock").textContent=s.clock?.label||"00:00"}
 const canvas=$("court"),ctx=canvas.getContext("2d");
