@@ -1053,6 +1053,27 @@ io.on("connection", socket => {
     p.input = next;
   });
 
+  socket.on("leaveRoom", () => {
+    const code = socket.data.room;
+    const room = rooms.get(code);
+    if (!room) return;
+
+    room.players = room.players.filter(p => p.id !== socket.id);
+    socket.leave(code);
+    delete socket.data.room;
+
+    if (!room.players.length) {
+      rooms.delete(code);
+    } else {
+      room.started = false;
+      room.gameOver = false;
+      room.players[0].ready = false;
+      room.ball = createBall();
+      io.to(code).emit("opponentLeft");
+      io.to(code).emit("roomUpdate", publicRoom(room));
+    }
+  });
+
   socket.on("disconnect", () => {
     const room = rooms.get(socket.data.room);
     if (!room) return;
@@ -1179,5 +1200,5 @@ setInterval(() => {
 }, 1000 / TICK_RATE);
 
 server.listen(PORT, () => {
-  console.log(`Hoop Duel running on port ${PORT}`);
+  console.log(`Basketball Stars Online server running on port ${PORT}`);
 });
