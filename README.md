@@ -1,6 +1,8 @@
 # Basketball Stars Online
 
-A Hoop Duel-style private-room lobby for launching the original Basketball Stars game. The lobby supports two players per room and has no 2v2 mode-selection screen.
+A real-time, server-authoritative 1v1 basketball game with private rooms. The lobby supports room codes, character selection, ready-up, live player movement, ball possession, shooting, steals, blocks, scoring, and overtime.
+
+**Gameplay note:** The uploaded Basketball Stars web build redirects to an externally hosted game and does not expose a multiplayer API. This repository therefore runs its own synchronized 2D basketball gameplay client/server rather than pretending the external single-player build is networked. It is not the original Basketball Stars engine or its original animations/assets.
 
 ## Deploy on Render
 
@@ -12,20 +14,20 @@ Create a **Web Service** connected to this repository:
 
 Render supplies the `PORT` environment variable automatically.
 
-## How to use the lobby
+## Play
 
-1. Open the deployed site.
-2. Enter a player name and select **CREATE COURT**.
+1. Open the deployed site in two browser windows/devices.
+2. On the first device, enter a player name and select **CREATE COURT**.
 3. Share the six-character room code.
-4. The other player enters the code and selects **JOIN COURT**.
-5. Both players select **I'M READY** to launch the original Basketball Stars game.
+4. On the second device, enter the code and select **JOIN COURT**.
+5. Each player chooses a different legend and selects **I'M READY**.
+6. Play using A/D or arrow keys to move, W/up to jump, hold Space to shoot, Shift to steal, double-tap a direction to dash, and E to use the character ability. Mobile touch controls are also included.
 
-## Important multiplayer limitation
-
-The room code and ready-up flow are multiplayer. The original Basketball Stars game is loaded from its existing hosted version in an iframe; its gameplay state is not synchronized between the two players by this lobby.
+The server owns the physics and broadcasts authoritative game snapshots to both players, so movement, possession, shots, scores, and the game clock are shared.
 
 ## Tech
 
 - Node.js + Express
-- Socket.IO for private rooms, player presence, and ready-up events
-- Original Basketball Stars game loaded after both players are ready
+- Socket.IO for room membership, player input, and live state
+- Server-side 60 FPS simulation with 30 FPS snapshots
+- Canvas-based responsive 2D client
