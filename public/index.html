@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BASKETBALL STARS ONLINE</title>
+<title>HOOP DUEL</title>
 
 <style>
 * {
@@ -291,8 +291,8 @@ canvas {
 <main class="wrap">
 
   <div class="brand">
-    <h1>🏀 BASKETBALL STARS ONLINE</h1>
-    <span class="tag">ONLINE • 1V1 ONLY</span>
+    <h1>🏀 HOOP DUEL</h1>
+    <span class="tag">ONLINE • HEAD TO HEAD</span>
   </div>
 
   <section class="panel" id="lobby">
@@ -303,9 +303,9 @@ canvas {
     <input id="name" maxlength="14" placeholder="Your player name" value="Player">
 
     <div class="row" style="margin-top:12px">
-      <button id="create">CREATE COURT</button>
+      <button type="button" id="create">CREATE COURT</button>
       <input id="roomCode" maxlength="6" placeholder="ROOM CODE" style="text-transform:uppercase">
-      <button class="secondary" id="join">JOIN COURT</button>
+      <button type="button" class="secondary" id="join">JOIN COURT</button>
     </div>
 
     <div id="status">Create a room or enter your friend's code.</div>
@@ -316,7 +316,7 @@ canvas {
       </div>
       <div class="code" id="codeText"></div>
       <div class="players" id="players"></div>
-      <button id="ready">I'M READY</button>
+      <button type="button" id="ready">I'M READY</button>
     </div>
   </section>
 
@@ -328,7 +328,7 @@ canvas {
         <span id="p2">PLAYER 2: 0</span>
       </div>
 
-      <button id="fullscreen">⛶ FULLSCREEN</button>
+      <button type="button" id="fullscreen">⛶ FULLSCREEN</button>
     </div>
 
     <div class="canvas-wrap">
@@ -342,7 +342,7 @@ canvas {
       <span>Jump near the basket to dunk · Jump into a shot to block</span>
     </div>
 
-    <button id="returnLobby" class="hidden">BACK TO LOBBY / REMATCH</button>
+    <button type="button" id="returnLobby" class="hidden">BACK TO LOBBY / REMATCH</button>
   </section>
 
 </main>
@@ -351,6 +351,14 @@ canvas {
 <script>
 const socket = io();
 const $ = id => document.getElementById(id);
+
+socket.on("connect", () => {
+  if (!$("roomInfo").classList.contains("hidden")) return;
+  $("status").textContent = "Connected. Create a court or enter your friend's room code.";
+});
+socket.on("connect_error", () => {
+  $("status").textContent = "Couldn't reach the game server. Refresh once the Render service is live.";
+});
 
 let mySide = 0;
 let started = false;
@@ -368,9 +376,20 @@ $("create").onclick = () => {
 };
 
 $("join").onclick = () => {
+  const code = $("roomCode").value.trim().toUpperCase();
+  if (!code) {
+    $("status").textContent = "Enter your friend's 6-character room code.";
+    $("roomCode").focus();
+    return;
+  }
+  $("roomCode").value = code;
+  if (!socket.connected) {
+    $("status").textContent = "Still connecting to the game server. Try again in a moment.";
+    return;
+  }
   socket.emit("joinRoom", {
     name: $("name").value,
-    code: $("roomCode").value
+    code
   });
 };
 
