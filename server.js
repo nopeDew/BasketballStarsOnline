@@ -20,12 +20,12 @@ app.get("/play", (_req, res) => {
   const indexPath = path.join(ENGINE_DIR, "index.html");
   if (!fs.existsSync(indexPath)) return res.status(503).send("The original Basketball Legends 2019 game files have not been checked out. Run git submodule update --init --recursive.");
   let html = fs.readFileSync(indexPath, "utf8");
-  html = html.replace(/<script[^>]+src=["']patch\\/js\\/null\\.js[^>]*><\\/script>/gi, "");
-  html = html.replace(/<script[^>]*>\\s*var useEvents[\\s\\S]*?window\\["GD_OPTIONS"\\][\\s\\S]*?<\\/script>/i, "");
-  html = html.replace(/<script[^>]+src=["']js\\/(?:analytics_ubg_v1_4|ubg235_client_v1_1)\\.js[^>]*><\\/script>/gi, "");
-  html = html.replace(/<script[^>]+src=["']patch\\/js\\/gd-sdk\\.js[^>]*><\\/script>/gi, "");
+  html = html.replace(/<script[^>]+src=["']patch\/js\/null\.js[^>]*><\/script>/gi, "");
+  html = html.replace(/<script[^>]*>\s*var useEvents[\s\S]*?window\["GD_OPTIONS"\][\s\S]*?<\/script>/i, "");
+  html = html.replace(/<script[^>]+src=["']js\/(?:analytics_ubg_v1_4|ubg235_client_v1_1)\.js[^>]*><\/script>/gi, "");
+  html = html.replace(/<script[^>]+src=["']patch\/js\/gd-sdk\.js[^>]*><\/script>/gi, "");
   const network = '<script src="/socket.io/socket.io.js"></script><script src="/engine-network.js"></script>';
-  const engineScript = /<script[^>]+src=["']basketball_legends_2019\\.min\\.js[^>]*><\\/script>/i;
+  const engineScript = /<script[^>]+src=["']basketball_legends_2019\.min\.js[^>]*><\/script>/i;
   if (engineScript.test(html)) html = html.replace(engineScript, network + "$&");
   else html = html.replace("</body>", network + "</body>");
   res.type("html").send(html);
