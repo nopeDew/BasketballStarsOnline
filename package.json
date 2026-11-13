@@ -1,0 +1,17 @@
+{
+  "name": "basketball-stars-online",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Online 1v1 lobby server for Basketball Stars",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
