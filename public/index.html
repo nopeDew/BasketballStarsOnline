@@ -1,130 +1,94 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>BASKETBALL STARS ONLINE</title>
 <style>
-*{box-sizing:border-box}
-body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% 0%,#344d70 0%,#131e30 55%,#080d17 100%);color:#f6f7fb;font-family:Inter,system-ui,Arial,sans-serif}
-.wrap{width:min(1500px,99vw);min-height:100vh;margin:auto;padding:14px;display:flex;flex-direction:column}
-.brand{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px}
-h1{font-size:clamp(25px,3vw,40px);letter-spacing:3px;margin:0;font-weight:950}
-.tag{color:#ffbd65;font-size:12px;font-weight:900;letter-spacing:3px}
-.panel{background:linear-gradient(145deg,#1d2a40,#111b2b);border:1px solid #465774;border-radius:20px;padding:20px;box-shadow:0 24px 80px #0008,inset 0 1px #ffffff12}
-#lobby{max-width:600px;margin:auto;width:100%}
-input,button{border:0;border-radius:11px;padding:13px 15px;font:inherit}
-input{background:#0c1524;color:white;border:1px solid #43536b;min-width:0;flex:1}
-button{background:linear-gradient(135deg,#ffd078,#ff922f);color:#291805;font-weight:900;cursor:pointer}
-button.secondary{background:#354762;color:white}
-button:disabled{opacity:.5;cursor:not-allowed}
-.row{display:flex;gap:10px;flex-wrap:wrap}
-#status{min-height:25px;color:#ffca83;margin:13px 0}
-.hidden{display:none!important}
-.code{font-size:30px;letter-spacing:6px;color:#ffc36e;font-weight:950}
-.players{color:#d1d9e6;margin:14px 0}
-#game{margin:0;display:flex;flex-direction:column;gap:12px;flex:1}
-.game-top{display:flex;justify-content:space-between;align-items:center;gap:12px}
-.launch-note{padding:28px;border:1px solid #60718b;border-radius:13px;background:#0c1524;color:#c0cddd;text-align:center;font-weight:800}
-#returnLobby{align-self:flex-start}
-.note{color:#c0cddd;font-size:12px;line-height:1.6;margin:0}
-@media(max-width:650px){.wrap{padding:7px}.panel{padding:12px}.brand{align-items:flex-start;flex-direction:column}.tag{font-size:10px}}
+:root{color-scheme:dark;--gold:#ffc66d;--panel:#142238;--line:#3a506d}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% 0%,#29466b,#0a1220 68%);color:#f7f8fc;font-family:Inter,system-ui,Arial,sans-serif}
+button,input,select{font:inherit;border-radius:10px;padding:12px 14px;border:1px solid #526780}
+button{border:0;background:linear-gradient(135deg,#ffda87,#ff963e);color:#261605;font-weight:950;cursor:pointer}
+button:disabled{opacity:.45;cursor:not-allowed}.secondary{background:#344b68;color:#fff}
+.wrap{width:min(1500px,100%);min-height:100vh;margin:auto;padding:14px;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}h1{font-size:clamp(22px,3vw,36px);letter-spacing:2px;margin:0;font-weight:1000}.eyebrow{font-size:11px;letter-spacing:3px;color:var(--gold);font-weight:900}
+.panel{background:linear-gradient(145deg,#1b2d46,#101b2c);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 22px 70px #0008}
+#lobby{width:min(620px,100%);margin:auto}input,select{background:#0b1524;color:white;min-width:0}input{width:100%}.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1}
+#status{color:#ffce8d;min-height:25px;margin:14px 0}.hidden{display:none!important}.code{font-size:32px;letter-spacing:7px;color:var(--gold);font-weight:1000}.muted{color:#b9c8da;font-size:13px;line-height:1.55}
+#roomInfo{margin-top:20px;padding-top:18px;border-top:1px solid #3a506d}.players{margin:12px 0;color:#e0e8f2}.legend-row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.legend-row button{padding:8px 10px;background:#344b68;color:white;border:1px solid #526780}.legend-row button.selected{background:#ffca73;color:#241708;border-color:#ffdf9d}
+#game{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px}.gamebar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.scoreboard{display:flex;align-items:center;justify-content:center;gap:clamp(10px,4vw,44px);background:#101b2b;border:1px solid var(--line);border-radius:14px;padding:10px 18px;min-width:min(100%,460px)}.score{font-size:clamp(28px,5vw,46px);font-weight:1000;color:#fff}.team{text-align:center;min-width:90px}.team small{display:block;color:#b9c8da;font-size:11px;letter-spacing:1px}.clock{font-size:22px;font-weight:950;color:var(--gold);min-width:76px;text-align:center}
+#courtFrame{position:relative;flex:1;min-height:310px;background:#0a1423;border:1px solid #4a617d;border-radius:16px;overflow:hidden;box-shadow:0 16px 50px #0008}canvas{width:100%;height:100%;display:block;touch-action:none}
+#toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);padding:8px 14px;background:#07101dcc;border:1px solid #657b96;border-radius:20px;font-weight:900;pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .15s}#toast.show{opacity:1}
+.controls{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.help{font-size:12px;color:#c0ccda;line-height:1.6}.key{display:inline-block;padding:2px 6px;border:1px solid #64758c;border-radius:5px;color:#fff;background:#17263a;font-weight:800}
+.mobile{display:none;gap:8px}.mobile button{min-width:54px;min-height:48px;touch-action:none}.mobile .action{background:#344b68;color:white}
+#endOverlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#07101dcc;padding:18px;text-align:center}#endOverlay .panel{width:min(400px,100%)}
+@media(max-width:700px){.wrap{padding:8px}header{align-items:flex-start;flex-direction:column}.panel{padding:14px}#courtFrame{min-height:300px}.mobile{display:flex}.help{display:none}.scoreboard{min-width:100%}}
 </style>
 </head>
-<body>
-<main class="wrap">
-  <div class="brand">
-    <h1>🏀 BASKETBALL STARS ONLINE</h1>
-    <span class="tag">ONLINE • 1V1 ONLY</span>
-  </div>
-
-  <section class="panel" id="lobby">
-    <p style="color:#c7d3e3;margin-top:0">Create a private court, invite your opponent, and get ready to play.</p>
-    <input id="name" maxlength="14" placeholder="Your player name" value="Player">
-    <div class="row" style="margin-top:12px">
-      <button type="button" id="create">CREATE COURT</button>
-      <input id="roomCode" maxlength="6" placeholder="ROOM CODE" style="text-transform:uppercase">
-      <button type="button" class="secondary" id="join">JOIN COURT</button>
-    </div>
-    <div id="status">Create a room or enter your friend's code.</div>
-    <div id="roomInfo" class="hidden">
-      <div style="font-size:12px;letter-spacing:2px;color:#c2ccdc">YOUR ROOM CODE</div>
-      <div class="code" id="codeText"></div>
-      <div class="players" id="players"></div>
-      <button type="button" id="ready">I'M READY</button>
-    </div>
-  </section>
-
-  <section id="game" class="hidden">
-    <div class="game-top">
-      <div style="font-weight:900;letter-spacing:1px">BASKETBALL STARS</div>
-      <button type="button" id="returnLobby" class="secondary">BACK TO LOBBY</button>
-    </div>
-    <div class="launch-note">Both players are ready. Launching the original Basketball Stars game…</div>
-    <p class="note">The original Basketball Stars game is loaded here. The room lobby handles invitations and ready-up; the original game's own match is not synchronized between browsers.</p>
-  </section>
+<body><main class="wrap">
+<header><h1>🏀 BASKETBALL STARS ONLINE</h1><span class="eyebrow">REAL-TIME 1V1 • PRIVATE COURTS</span></header>
+<section id="lobby" class="panel">
+<p class="muted">Create a private court, send your friend the room code, pick your player, and get on the court.</p>
+<label class="muted" for="name">PLAYER NAME</label><input id="name" maxlength="14" value="Player" placeholder="Your name">
+<div class="row" style="margin-top:12px"><button id="create">CREATE COURT</button><input id="roomCode" maxlength="6" placeholder="ROOM CODE" style="text-transform:uppercase"><button id="join" class="secondary">JOIN COURT</button></div>
+<div id="status">Connecting to the game server…</div>
+<div id="roomInfo" class="hidden"><div class="muted">YOUR ROOM CODE</div><div class="code" id="codeText"></div><div id="players" class="players"></div>
+<div class="muted">CHOOSE YOUR PLAYER</div><div id="legends" class="legend-row"></div>
+<button id="ready">I'M READY</button><p class="muted">Both players must be ready before tip-off.</p></div>
+</section>
+<section id="game" class="hidden">
+<div class="gamebar"><div class="scoreboard"><div class="team"><small id="p1name">PLAYER 1</small><span class="score" id="p1score">0</span></div><div class="clock" id="clock">TIP-OFF</div><div class="team"><small id="p2name">PLAYER 2</small><span class="score" id="p2score">0</span></div></div><button id="back" class="secondary">LOBBY</button></div>
+<div id="courtFrame"><canvas id="court" width="1200" height="600"></canvas><div id="toast"></div><div id="endOverlay" class="hidden"><div class="panel"><h2 id="resultTitle">FINAL</h2><p id="resultText" class="muted"></p><button id="rematch">BACK TO ROOM</button></div></div></div>
+<div class="controls"><div class="help"><b>MOVE</b> <span class="key">A</span><span class="key">D</span> / <span class="key">←</span><span class="key">→</span> &nbsp; <b>JUMP</b> <span class="key">W</span>/<span class="key">↑</span> &nbsp; <b>SHOOT</b> hold <span class="key">SPACE</span> &nbsp; <b>STEAL</b> <span class="key">SHIFT</span> &nbsp; <b>DASH</b> double tap direction / <b>ABILITY</b> <span class="key">E</span></div>
+<div class="mobile"><button class="action" data-key="left">◀</button><button class="action" data-key="right">▶</button><button class="action" data-key="up">JUMP</button><button data-key="shoot">SHOOT</button><button class="action" data-key="steal">STEAL</button><button class="action" data-key="ability">E</button></div></div>
+</section>
 </main>
-
 <script src="/socket.io/socket.io.js"></script>
 <script>
-const socket=io();
-const $=id=>document.getElementById(id);
-let inRoom=false;
-socket.on("connect",()=>{
-  if(!inRoom)$("status").textContent="Connected. Create a court or enter your friend's room code.";
-});
-socket.on("connect_error",()=>{
-  $("status").textContent="Couldn't reach the game server. Refresh once the server is live.";
-});
-$("create").addEventListener("click",()=>{
-  if(!socket.connected){$("status").textContent="Still connecting to the server. Try again in a moment.";return;}
-  const name=$("name").value.trim()||"Player";
-  socket.emit("createRoom",{name});
-});
-$("join").addEventListener("click",()=>{
-  const code=$("roomCode").value.trim().toUpperCase();
-  if(!code){$("status").textContent="Enter your friend's 6-character room code.";$("roomCode").focus();return;}
-  $("roomCode").value=code;
-  if(!socket.connected){$("status").textContent="Still connecting to the server. Try again in a moment.";return;}
-  socket.emit("joinRoom",{name:$("name").value.trim()||"Player",code});
-});
-$("ready").addEventListener("click",()=>{
-  if(!socket.connected)return;
-  socket.emit("ready");
-  $("ready").disabled=true;
-  $("status").textContent="You're ready. Waiting for your opponent...";
-});
-$("returnLobby").addEventListener("click",()=>{
-  $("game").classList.add("hidden");
-  $("lobby").classList.remove("hidden");
-  $("ready").disabled=false;
-  $("status").textContent="Back in the lobby.";
-});
-socket.on("roomJoined",room=>{
-  inRoom=true;
-  $("roomInfo").classList.remove("hidden");
-  $("codeText").textContent=room.code;
-  $("status").textContent="Room created. Share the code with your opponent.";
-  updatePlayers(room.players||[]);
-});
-socket.on("roomUpdate",room=>updatePlayers(room.players||[]));
-function updatePlayers(players){
-  $("players").textContent=players.slice().sort((a,b)=>a.side-b.side)
-    .map(p=>`PLAYER ${p.side}: ${p.name} ${p.ready?"✓ READY":""}`).join("   •   ");
-}
-socket.on("joinError",msg=>$("status").textContent=msg);
-socket.on("gameStarted",()=>{
-  $("lobby").classList.add("hidden");
-  $("game").classList.remove("hidden");
-  window.location.assign("https://ubg98.github.io/BasketballStars/");
-});
-socket.on("opponentLeft",()=>{
-  $("game").classList.add("hidden");
-  $("lobby").classList.remove("hidden");
-  $("ready").disabled=false;
-  $("status").textContent="Your opponent left the room.";
-  inRoom=true;
-});
-</script>
-</body>
-</html>
+(()=>{
+const socket=io();const $=id=>document.getElementById(id);let room=null,mySide=null,lastState=null,keys={},lastDirAt=0,lastDir=0,lastSent=0,toastTimer=null;
+const legends=[["lebron","LEBRON","Chase Down"],["steph","STEPH","Range"],["jordan","JORDAN","First Step"],["shaq","SHAQ","Diesel"],["kareem","KAREEM","Skyhook"]];
+function say(s){$("status").textContent=s}
+function notify(s){$("toast").textContent=s;$("toast").classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>$("toast").classList.remove("show"),1500)}
+socket.on("connect",()=>say("Connected. Create a court or enter your friend's room code."));
+socket.on("connect_error",()=>say("Can't reach the server. Check that the Render service is running."));
+$("create").onclick=()=>{if(!socket.connected)return say("Still connecting…");socket.emit("createRoom",{name:$("name").value.trim()||"Player"})};
+$("join").onclick=()=>{const code=$("roomCode").value.trim().toUpperCase();if(code.length!==6)return say("Enter the six-character room code.");if(!socket.connected)return say("Still connecting…");socket.emit("joinRoom",{name:$("name").value.trim()||"Player",code})};
+socket.on("roomJoined",r=>{room=r;mySide=r.mySide||r.players.find(p=>p.name===($("name").value.trim()||"Player"))?.side||1;$("roomInfo").classList.remove("hidden");$("codeText").textContent=r.code;$("lobby").classList.remove("hidden");$("game").classList.add("hidden");renderRoom(r);say("Room ready. Share the code with your opponent.")});
+socket.on("roomUpdate",r=>{room=r;renderRoom(r)});
+socket.on("joinError",say);socket.on("characterSelectError",say);
+function renderRoom(r){$("codeText").textContent=r.code;$("players").textContent=(r.players||[]).sort((a,b)=>a.side-b.side).map(p=>"PLAYER "+p.side+": "+p.name+(p.ready?" ✓ READY":"")).join("   •   ")||"Waiting for opponent…";
+$("legends").innerHTML="";const mine=(r.players||[]).find(p=>p.side===mySide);legends.forEach(([id,label,desc])=>{const taken=(r.players||[]).some(p=>p.side!==mySide&&p.characterId===id);const b=document.createElement("button");b.textContent=label+(mine?.characterId===id?" ✓":"");b.title=desc;b.disabled=taken||!!mine?.ready;b.className=mine?.characterId===id?"selected":"";b.onclick=()=>socket.emit("selectCharacter",{characterId:id});$("legends").appendChild(b)});$("ready").disabled=!!mine?.ready||r.players.length!==2;$("ready").textContent=mine?.ready?"WAITING…":"I'M READY"}
+$("ready").onclick=()=>{socket.emit("ready");$("ready").disabled=true;say("You're ready. Waiting for your opponent…")};
+socket.on("gameStarted",()=>{$("lobby").classList.add("hidden");$("game").classList.remove("hidden");$("endOverlay").classList.add("hidden");notify("TIP-OFF INCOMING")});
+socket.on("state",s=>{lastState=s;updateHud(s)});
+socket.on("shotTaken",e=>notify(e.green?"PERFECT RELEASE!":"SHOT: "+e.quality+"%"));
+socket.on("basket",e=>notify(e.scorer+"  +"+e.points));
+socket.on("blocked",e=>notify(e.player+" BLOCK!"));socket.on("stolen",e=>notify(e.player+" STEAL!"));socket.on("stunned",e=>notify(e.player+" STUNNED"));socket.on("abilityUsed",e=>notify(e.ability.toUpperCase()));
+socket.on("periodUpdate",e=>notify("OVERTIME "+e.overtime));
+socket.on("gameOver",e=>{$("endOverlay").classList.remove("hidden");$("resultTitle").textContent=e.winner?e.winner+" WINS":"IT'S A TIE";$("resultText").textContent=e.scores.map(p=>p.name+": "+p.score).join("  •  ")});
+socket.on("opponentLeft",()=>{lastState=null;$("game").classList.add("hidden");$("lobby").classList.remove("hidden");$("ready").disabled=false;say("Your opponent left. Invite someone else with the same room code.")});
+$("back").onclick=()=>{keys={};$("game").classList.add("hidden");$("lobby").classList.remove("hidden");say("Back in the room. Ready up when you're set.")};
+$("rematch").onclick=()=>{$("endOverlay").classList.add("hidden");$("game").classList.add("hidden");$("lobby").classList.remove("hidden");$("ready").disabled=false;say("Ready up for a rematch.")};
+function updateHud(s){const p=s.players||[];const a=p.find(x=>x.side===1),b=p.find(x=>x.side===2);if(a){$("p1name").textContent=a.name.toUpperCase();$("p1score").textContent=a.score}if(b){$("p2name").textContent=b.name.toUpperCase();$("p2score").textContent=b.score}$("clock").textContent=s.clock?.label||"00:00"}
+const canvas=$("court"),ctx=canvas.getContext("2d");
+function roundedRect(x,y,w,h,r,fill,stroke){ctx.beginPath();ctx.roundRect(x,y,w,h,r);if(fill){ctx.fillStyle=fill;ctx.fill()}if(stroke){ctx.strokeStyle=stroke;ctx.stroke()}}
+function drawCourt(){const g=ctx.createLinearGradient(0,0,0,600);g.addColorStop(0,"#172c43");g.addColorStop(1,"#0b1828");ctx.fillStyle=g;ctx.fillRect(0,0,1200,600);
+ctx.fillStyle="#b87943";ctx.fillRect(0,470,1200,130);ctx.fillStyle="#d99b5c";ctx.fillRect(0,470,1200,8);
+for(let x=0;x<1200;x+=120){ctx.fillStyle=x%240===0?"#0000000b":"#ffffff08";ctx.fillRect(x,478,120,122)}
+ctx.strokeStyle="#f3d6a0";ctx.lineWidth=4;ctx.globalAlpha=.8;ctx.beginPath();ctx.moveTo(0,470);ctx.lineTo(1200,470);ctx.stroke();ctx.beginPath();ctx.arc(600,470,105,Math.PI,0);ctx.stroke();ctx.beginPath();ctx.moveTo(600,470);ctx.lineTo(600,600);ctx.stroke();ctx.beginPath();ctx.arc(600,470,4,0,Math.PI*2);ctx.fillStyle="#f3d6a0";ctx.fill();
+[82,1118].forEach((x,i)=>{ctx.fillStyle="#dce6f0";ctx.fillRect(i===0?28:1144,105,10,150);ctx.fillStyle="#ffb14c";ctx.fillRect(i===0?38:1118,169,64,8);ctx.strokeStyle="#ffb14c";ctx.lineWidth=5;ctx.beginPath();ctx.ellipse(x,181,25,7,0,0,Math.PI*2);ctx.stroke();ctx.strokeStyle="#f5d7a2";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x-20,185);ctx.lineTo(x-13,211);ctx.lineTo(x+13,211);ctx.lineTo(x+20,185);ctx.stroke()});
+ctx.globalAlpha=1;ctx.fillStyle="#ffffff10";ctx.font="900 44px system-ui";ctx.textAlign="center";ctx.fillText("BASKETBALL STARS",600,65)}
+function drawPlayer(p){const x=p.x,y=p.y;const left=p.side===1;const color=left?"#e34b52":"#4b9ce8";const dark=left?"#9f2938":"#245b9a";ctx.save();ctx.translate(x,y);ctx.fillStyle="#0007";ctx.beginPath();ctx.ellipse(0,2,25,7,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#f1bb91";ctx.beginPath();ctx.arc(0,-68,17,0,Math.PI*2);ctx.fill();ctx.fillStyle="#171b25";ctx.beginPath();ctx.arc(0,-74,17,Math.PI,Math.PI*2);ctx.fill();ctx.fillStyle=color;ctx.beginPath();ctx.moveTo(-17,-49);ctx.lineTo(17,-49);ctx.lineTo(23,-8);ctx.lineTo(-23,-8);ctx.closePath();ctx.fill();ctx.fillStyle=dark;ctx.fillRect(-20,-8,40,8);ctx.fillStyle="#f1bb91";ctx.fillRect(-21,-45,8,30);ctx.fillRect(13,-45,8,30);ctx.fillStyle="#171b25";ctx.fillRect(-19,-3,15,5);ctx.fillRect(4,-3,15,5);ctx.fillStyle="#fff";ctx.font="bold 13px system-ui";ctx.textAlign="center";ctx.fillText(p.jerseyNumber|| (left?"23":"30"),0,-24);ctx.restore();
+ctx.fillStyle="#fff";ctx.font="bold 15px system-ui";ctx.textAlign="center";ctx.fillText(p.name,x,y-102);if(p.charging&&p.showShotMeter){ctx.fillStyle="#26384b";ctx.fillRect(x-30,y-125,60,8);ctx.fillStyle=p.charge>=.66&&p.charge<=.78?"#5be08d":"#ffc66d";ctx.fillRect(x-30,y-125,60*Math.min(1,p.charge),8)}}
+function drawBall(b){ctx.save();ctx.translate(b.x,b.y);ctx.fillStyle="#f18a32";ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#422312";ctx.lineWidth=2;ctx.beginPath();ctx.arc(0,0,13,0,Math.PI*2);ctx.moveTo(-13,0);ctx.lineTo(13,0);ctx.moveTo(0,-13);ctx.lineTo(0,13);ctx.moveTo(-9,-9);ctx.quadraticCurveTo(0,0,9,9);ctx.moveTo(9,-9);ctx.quadraticCurveTo(0,0,-9,9);ctx.stroke();ctx.restore()}
+function render(){requestAnimationFrame(render);drawCourt();if(!lastState){ctx.fillStyle="#fff";ctx.font="900 32px system-ui";ctx.textAlign="center";ctx.fillText("WAITING FOR TIP-OFF",600,310);return}const s=lastState;(s.players||[]).forEach(drawPlayer);if(s.ball)drawBall(s.ball);if(s.clock?.jumpBallCountdown>0){ctx.fillStyle="#fff";ctx.font="1000 76px system-ui";ctx.textAlign="center";ctx.fillText(s.clock.jumpBallCountdown,600,300)}if(s.gameOver){ctx.fillStyle="#fff";ctx.font="900 24px system-ui";ctx.textAlign="center";ctx.fillText("FINAL SCORE",600,290)}}
+render();
+function sendInput(){const now=performance.now();if(now-lastSent<40)return;lastSent=now;socket.emit("input",{left:!!keys.left,right:!!keys.right,up:!!keys.up,shoot:!!keys.shoot,steal:!!keys.steal,pumpFake:!!keys.pumpFake,ability:!!keys.ability})}
+function setKey(k,v){const was=!!keys[k];keys[k]=v;if(k==="left"||k==="right"){if(v&&!was){const dir=k==="left"?-1:1,now=performance.now();if(dir===lastDir&&now-lastDirAt<280)socket.emit("dash",{direction:dir});lastDir=dir;lastDirAt=now}}sendInput()}
+window.addEventListener("keydown",e=>{let k=e.key.toLowerCase(),map={arrowleft:"left",a:"left",arrowright:"right",d:"right",arrowup:"up",w:"up"," ":"shoot",shift:"steal",e:"ability",f:"pumpFake"};if(map[k]){e.preventDefault();setKey(map[k],true)}});
+window.addEventListener("keyup",e=>{let k=e.key.toLowerCase(),map={arrowleft:"left",a:"left",arrowright:"right",d:"right",arrowup:"up",w:"up"," ":"shoot",shift:"steal",e:"ability",f:"pumpFake"};if(map[k]){e.preventDefault();setKey(map[k],false)}});
+window.addEventListener("blur",()=>{keys={};sendInput()});
+document.querySelectorAll("[data-key]").forEach(b=>{const k=b.dataset.key;b.addEventListener("pointerdown",e=>{e.preventDefault();b.setPointerCapture(e.pointerId);setKey(k,true)});["pointerup","pointercancel","lostpointercapture"].forEach(ev=>b.addEventListener(ev,e=>{e.preventDefault();setKey(k,false)}))});
+setInterval(sendInput,50);
+})();
+</script></body></html>
