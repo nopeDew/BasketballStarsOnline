@@ -1,6 +1,6 @@
 # Basketball Stars Online
 
-A Render-ready Node.js + Socket.IO service scaffold for private 1v1 lobbies.
+A browser-based **online 1v1 basketball game** using the Hoop Duel gameplay and private-room flow. There is no 2v2 mode or mode-selection screen.
 
 ## Deploy on Render
 
@@ -8,19 +8,22 @@ Create a **Web Service** connected to this repository:
 - Runtime: Node
 - Build command: `npm install`
 - Start command: `npm start`
+- Optional health check path: `/health`
 
-The service serves the lobby page at `/` and health check at `/health`. No environment variables are required; Render supplies `PORT`.
+Render supplies the `PORT` environment variable automatically.
 
-## Current status
+## How to play
 
-- [x] Render-compatible Node server
-- [x] Create/join private lobbies with six-character codes
-- [x] Two-player room limit and disconnect handling
-- [x] Socket.IO input-relay foundation
-- [ ] Copy the original Basketball Stars game files and binary assets into this repository
-- [ ] Connect the game's local two-player simulation to the Socket.IO input relay
-- [ ] Remove non-1v1 modes from the original game UI
+1. Open the deployed site.
+2. Enter a player name and select **CREATE COURT**.
+3. Share the six-character room code.
+4. The other player enters the code and selects **JOIN COURT**.
+5. Both players select **I'M READY** to start the 1v1 game.
 
-**Important:** This commit is the lobby/server foundation, not yet the copied playable Basketball Stars game. The uploaded archive includes binary assets and a large game bundle that cannot be bulk-transferred through the available GitHub editing connection. The original game must still be added and its local two-player controls wired into the relay before this is a playable online game.
+Controls are shown below the court in-game. Player 1 uses A/D/W; Player 2 uses the arrow keys. Both use Space to shoot and Shift to steal.
 
-Keep the supplied original-project MIT copyright and license notice with the game files when adding them.
+## Tech
+
+- Node.js + Express
+- Socket.IO rooms and real-time input/state synchronization
+- Server-side game physics and scoring
