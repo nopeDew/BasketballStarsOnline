@@ -8,6 +8,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 app.use(express.static("public"));
+app.get("/health", (_req, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 3000;
 const rooms = new Map();
