@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Basketball Stars Online</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#10131b;color:#fff;font-family:Arial,sans-serif}
+main{width:min(92vw,460px);padding:32px;background:#1d2431;border:1px solid #394458;border-radius:18px;box-shadow:0 18px 60px #0008}
+h1{margin:0 0 8px;font-size:30px}p{color:#b8c2d3;line-height:1.5}.row{display:flex;gap:10px;margin:14px 0}
+input,button{font:inherit;border-radius:9px;padding:13px;border:0}input{min-width:0;flex:1;background:#0f1520;color:white;border:1px solid #46536a}
+button{cursor:pointer;background:#f5a623;color:#171717;font-weight:700}button.secondary{background:#344258;color:white}
+#status{margin-top:18px;padding:12px;border-radius:9px;background:#111824;color:#cbd5e1;min-height:44px}
+small{display:block;color:#8996aa;margin-top:18px}
+</style>
+</head>
+<body><main>
+<h1>Basketball Stars Online</h1>
+<p>Private 1v1 lobbies. Create a room and share its code with your opponent.</p>
+<input id="name" maxlength="16" placeholder="Your player name" aria-label="Your player name">
+<div class="row"><button id="create">Create Lobby</button></div>
+<div class="row"><input id="code" maxlength="6" placeholder="6-character code" aria-label="Lobby code"><button id="join" class="secondary">Join</button></div>
+<div id="status" role="status">Connecting…</div>
+<small>Online lobby service is connected. The original game client still needs to be integrated with the input relay.</small>
+</main>
+<script src="/socket.io/socket.io.js"></script><script>
+const socket=io();const status=document.querySelector("#status");
+const say=t=>status.textContent=t;
+socket.on("connect",()=>say("Connected. Create a lobby or join with a code."));
+socket.on("connect_error",()=>say("Could not connect to the server."));
+socket.on("room:ready",d=>say("Opponent connected: "+d.players.join(" vs ")+". Game client integration is next."));
+socket.on("room:opponent-left",()=>say("Your opponent left the lobby."));
+document.querySelector("#create").onclick=()=>socket.emit("room:create",{name:document.querySelector("#name").value},r=>say(r.ok?"Lobby created. Share code: "+r.code:"Error: "+r.error));
+document.querySelector("#join").onclick=()=>socket.emit("room:join",{name:document.querySelector("#name").value,code:document.querySelector("#code").value},r=>say(r.ok?"Joined lobby "+r.code+". Waiting for game client…":"Error: "+r.error));
+</script></body></html>
