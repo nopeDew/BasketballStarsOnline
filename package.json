@@ -1,10 +1,11 @@
 {
   "name": "basketball-stars-online",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Real-time server-authoritative 1v1 basketball game with private rooms",
+  "description": "Online 1v1 lobby and input relay for the original Basketball Legends 2019 game",
   "main": "server.js",
   "scripts": {
+    "postinstall": "git submodule update --init --depth 1",
     "start": "node server.js"
   },
   "engines": {
