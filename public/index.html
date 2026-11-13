@@ -25,10 +25,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .players{color:#d1d9e6;margin:14px 0}
 #game{margin:0;display:flex;flex-direction:column;gap:12px;flex:1}
 .game-top{display:flex;justify-content:space-between;align-items:center;gap:12px}
-#originalGame{width:100%;flex:1;min-height:72vh;border:1px solid #60718b;border-radius:13px;background:#05080d}
+.launch-note{padding:28px;border:1px solid #60718b;border-radius:13px;background:#0c1524;color:#c0cddd;text-align:center;font-weight:800}
 #returnLobby{align-self:flex-start}
 .note{color:#c0cddd;font-size:12px;line-height:1.6;margin:0}
-@media(max-width:650px){.wrap{padding:7px}.panel{padding:12px}.brand{align-items:flex-start;flex-direction:column}.tag{font-size:10px}#originalGame{min-height:75vh}}
+@media(max-width:650px){.wrap{padding:7px}.panel{padding:12px}.brand{align-items:flex-start;flex-direction:column}.tag{font-size:10px}}
 </style>
 </head>
 <body>
@@ -60,7 +60,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
       <div style="font-weight:900;letter-spacing:1px">BASKETBALL STARS</div>
       <button type="button" id="returnLobby" class="secondary">BACK TO LOBBY</button>
     </div>
-    <iframe id="originalGame" title="Original Basketball Stars game" allow="fullscreen; autoplay; gamepad; clipboard-read; clipboard-write" referrerpolicy="no-referrer" src="about:blank"></iframe>
+    <div class="launch-note">Both players are ready. Launching the original Basketball Stars game…</div>
     <p class="note">The original Basketball Stars game is loaded here. The room lobby handles invitations and ready-up; the original game's own match is not synchronized between browsers.</p>
   </section>
 </main>
@@ -95,7 +95,6 @@ $("ready").addEventListener("click",()=>{
   $("status").textContent="You're ready. Waiting for your opponent...";
 });
 $("returnLobby").addEventListener("click",()=>{
-  $("originalGame").src="about:blank";
   $("game").classList.add("hidden");
   $("lobby").classList.remove("hidden");
   $("ready").disabled=false;
@@ -117,10 +116,9 @@ socket.on("joinError",msg=>$("status").textContent=msg);
 socket.on("gameStarted",()=>{
   $("lobby").classList.add("hidden");
   $("game").classList.remove("hidden");
-  $("originalGame").src="https://ubg98.github.io/BasketballStars/";
+  window.location.assign("https://ubg98.github.io/BasketballStars/");
 });
 socket.on("opponentLeft",()=>{
-  $("originalGame").src="about:blank";
   $("game").classList.add("hidden");
   $("lobby").classList.remove("hidden");
   $("ready").disabled=false;
