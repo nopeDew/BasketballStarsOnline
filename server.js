@@ -998,3 +998,185 @@ io.on("connection", socket => {
     // Handle a steal immediately on the new Shift press. This avoids
     // polling the steal action inside the 60 FPS physics loop.
     if (next.steal && !p.input.steal) {
+      attemptSteal(room, p, now);
+    }
+
+    // Character ability activates on E key-down.
+    if (next.ability && !p.input.ability) {
+      activateAbility(room, p, now);
+    }
+
+    if (countdown) {
+      p.input = next;
+      return;
+    }
+
+    // Pump fake only works while holding the ball and not charging a shot.
+    // The edge check means holding the key does not repeatedly trigger it.
+    if (
+      next.pumpFake &&
+      !p.input.pumpFake &&
+      room.ball.owner === p.id &&
+      p.shootStartedAt === null &&
+      now - p.lastPumpFakeAt >= 500
+    ) {
+      p.lastPumpFakeAt = now;
+      p.action = "pumpFake";
+      p.actionUntil = now + 500;
+
+    }
+
+    if (
+      next.shoot &&
+      !p.input.shoot &&
+      room.ball.owner === p.id
+    ) {
+      p.shootStartedAt = Date.now();
+    }
+
+    if (!next.shoot && p.input.shoot) {
+      if (
+        p.shootStartedAt !== null &&
+        room.ball.owner === p.id
+      ) {
+        shootBall(
+          room,
+          p,
+          Date.now() - p.shootStartedAt
+        );
+      }
+
+      p.shootStartedAt = null;
+    }
+
+    p.input = next;
+  });
+
+  socket.on("disconnect", () => {
+    const room = rooms.get(socket.data.room);
+    if (!room) return;
+
+    room.players = room.players.filter(
+      p => p.id !== socket.id
+    );
+
+    if (!room.players.length) {
+      rooms.delete(room.code);
+    } else {
+      room.started = false;
+      room.gameOver = false;
+      room.players[0].ready = false;
+      room.ball = createBall();
+
+      io.to(room.code).emit("opponentLeft");
+      io.to(room.code).emit(
+        "roomUpdate",
+        publicRoom(room)
+      );
+    }
+  });
+});
+
+// Physics stays at 60 FPS. Network snapshots are sent at 30 FPS
+// to reduce traffic while client-side interpolation stays smooth.
+setInterval(() => {
+  const now = Date.now();
+
+  for (const room of rooms.values()) {
+    if (!room.started || room.players.length !== 2) continue;
+
+    // Freeze physics during the countdown while preserving queued movement inputs.
+    if (now < room.jumpBallStartsAt) {
+      room.snapshotCounter += 1;
+      if (room.snapshotCounter >= SNAPSHOT_EVERY) {
+        room.snapshotCounter = 0;
+        emitState(room, now);
+      }
+      continue;
+    }
+
+    if (!room.jumpBallTossStarted) {
+      room.jumpBallTossStarted = true;
+      room.ball.vx = 0;
+      room.ball.vy = -JUMP_BALL_TOSS_SPEED;
+      room.lastTick = now;
+    }
+
+    updateGameClock(room, now);
+    if (!room.started) continue;
+
+    const dt = Math.min(
+      (now - room.lastTick) / 1000,
+      0.035
+    );
+
+    room.lastTick = now;
+
+    for (const player of room.players) {
+      movePlayer(player, dt);
+    }
+
+    if (room.ball.pendingScore) {
+      updateFreeBall(room.ball, dt);
+
+      if (now >= room.ball.pendingScore.resetAt) {
+        const receiver = room.players.find(
+          p => p.id === room.ball.pendingScore.receiverId
+        );
+
+        if (receiver) {
+          givePossession(room, receiver);
+        }
+      }
+    } else if (room.ball.dunking) {
+      handleDunk(room, dt);
+    } else {
+      if (room.ball.owner) {
+        const holder = room.players.find(
+          p => p.id === room.ball.owner
+        );
+
+        if (holder) {
+          followHolder(room.ball, holder);
+        } else {
+          room.ball.owner = null;
+        }
+      }
+
+      if (!room.ball.owner) {
+        updateFreeBall(room.ball, dt);
+        handleBlocks(room);
+        checkBasket(room);
+
+        if (!room.ball.pendingScore && !room.ball.owner) {
+          tryPickupBall(room);
+        }
+      }
+    }
+
+    for (const p of room.players) {
+      if (
+        p.actionUntil < now &&
+        p.stunnedUntil <= now &&
+        !p.dunking
+      ) {
+        p.action = p.y < COURT.floor
+          ? "jump"
+          : "idle";
+      }
+
+      p.previousInput = { ...p.input };
+    }
+
+    room.snapshotCounter += 1;
+
+    if (room.snapshotCounter >= SNAPSHOT_EVERY) {
+      room.snapshotCounter = 0;
+      emitState(room, now);
+    }
+  }
+}, 1000 / TICK_RATE);
+
+server.listen(PORT, () => {
+  console.log(`Hoop Duel running on port ${PORT}`);
+});
