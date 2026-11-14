@@ -4,7 +4,7 @@ const code=(params.get("room")||"").toUpperCase();
 const sessionId=sessionStorage.getItem("bso-session");
 const querySeed=Number(params.get("seed")||0);
 if(querySeed){let state=querySeed>>>0;Math.random=()=>{state=(state+0x6D2B79F5)>>>0;let t=state;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296}}
-const socket=io();
+const socket=io();window.__BSO_SOCKET=socket;
 const actions=["left","right","jump","down","shoot","super"];
 const defaults={left:"KeyA",right:"KeyD",jump:"KeyW",down:"KeyS",shoot:"KeyJ",super:"KeyK"};
 let bindings={...defaults};try{bindings={...bindings,...JSON.parse(localStorage.getItem("bso-legends-keys")||"{}")}}catch(e){}
