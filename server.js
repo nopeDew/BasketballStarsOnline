@@ -192,11 +192,8 @@ io.on("connection", socket => {
   socket.on("disconnect", () => {
     const room = rooms.get(socket.data.engineRoom);
     if (!room) return;
-    const player = room.players.find(p => p.sessionId === socket.data.engineSession);
-    // A page navigation creates a new gameplay socket before the old lobby
-    // socket's disconnect event is always processed. Never let that stale
-    // disconnect detach the newer socket from the room.
-    if (!player || player.socketId !== socket.id) return;
+    const player = room.players.find(p => p.socketId === socket.id);
+    if (!player) return;
     player.socketId = null;
     const opponent = room.players.find(p => p !== player && p.socketId);
     if (opponent) io.to(opponent.socketId).emit("engineOpponentDisconnected");
