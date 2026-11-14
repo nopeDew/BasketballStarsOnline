@@ -18,7 +18,7 @@ main{width:min(720px,100%)}header{display:flex;justify-content:space-between;ali
 <label class="field" for="name">PLAYER NAME</label><input id="name" maxlength="14" value="Player" autocomplete="nickname">
 <div class="actions"><button id="create">CREATE COURT</button><input id="roomCode" maxlength="6" placeholder="ROOM CODE" aria-label="Room code" style="text-transform:uppercase"><button id="join" class="secondary">JOIN</button></div>
 <div id="status">Connecting to online rooms…</div>
-<div id="room" class="room hidden"><div class="field">YOUR ROOM CODE</div><div id="code" class="code"></div><div id="players"></div><p class="muted note">Both players must be ready. After the lobby, choose <b>2 PLAYERS</b> in the original game's title menu on both devices. Your keyboard is mapped to your assigned side.</p><button id="ready" disabled> I'M READY </button></div>
+<div id="room" class="room hidden"><div class="field">YOUR ROOM CODE</div><div id="code" class="code"></div><div id="players"></div><p class="muted note">Both players must be ready. The original game will start automatically on both devices, with each person controlling their assigned side. No extra local-player setup is needed.</p><button id="ready" disabled> I'M READY </button></div>
 </section><div class="footer">Private 1v1 rooms • Original game engine • Separate-device controls</div>
 </main>
 <script src="/socket.io/socket.io.js"></script>
@@ -26,7 +26,7 @@ main{width:min(720px,100%)}header{display:flex;justify-content:space-between;ali
 (()=>{const $=id=>document.getElementById(id);const socket=io();let room=null,mySide=null,sessionId=sessionStorage.getItem("bso-session");
 if(!sessionId){sessionId=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(36).slice(2));sessionStorage.setItem("bso-session",sessionId)}
 function status(s){$("status").textContent=s}
-function render(r){room=r;$("room").classList.remove("hidden");$("code").textContent=r.code;$("players").innerHTML="";r.players.forEach(p=>{const row=document.createElement("div");row.className="player";const name=document.createElement("span");name.textContent="PLAYER "+p.side+" · "+p.name;const state=document.createElement("span");state.className=p.ready?"ready":"waiting";state.textContent=p.ready?"READY":"NOT READY";row.append(name,state);$("players").append(row)});$("ready").disabled=r.players.length!==2||!!r.started||r.players.some(p=>p.side===mySide&&p.ready);status(r.started?"Both players ready. Opening the original game…":"Share the room code and ready up.") }
+function render(r){room=r;$("room").classList.remove("hidden");$("code").textContent=r.code;$("players").innerHTML="";r.players.forEach(p=>{const row=document.createElement("div");row.className="player";const name=document.createElement("span");name.textContent="PLAYER "+p.side+" · "+p.name;const state=document.createElement("span");state.className=p.ready?"ready":"waiting";state.textContent=p.ready?"READY":"NOT READY";row.append(name,state);$("players").append(row)});$("ready").disabled=r.players.length!==2||!!r.started||r.players.some(p=>p.side===mySide&&p.ready);status(r.started?"Both players ready. Opening the original game…":"Share the room code. Both players need to ready up.") }
 socket.on("connect",()=>status("Connected. Create a court or join with a room code."));
 socket.on("connect_error",()=>status("Cannot reach the game server. Check the Render service."));
 socket.on("engineError",status);
