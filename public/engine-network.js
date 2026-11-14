@@ -90,7 +90,7 @@ socket.on("engineRemoteInput",packet=>{
  remoteState={...(packet.actions||{})};
  window.__BSO_UPDATE_NET_INPUTS(remoteSide,remoteState);
  remotePackets++;
- if(remotePackets===1)status("Opponent input received · Player "+remoteSide+" linked");
+ if(remotePackets===1)status("Opponent connection confirmed · Player "+remoteSide+" controls relayed");
 
 });
 socket.on("engineOpponentDisconnected",()=>{releaseAll();status("Opponent disconnected. Waiting for reconnection…")});
