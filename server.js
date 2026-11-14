@@ -49,8 +49,8 @@ app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
   // authoritative match state without replacing its graphics, physics, or animations.
   // These are the real export statements in the uploaded Basketball Legends bundle.
   // Expose the classes from the game's webpack module so engine-sync.js can patch them.
-  js = js.replace("e.Inventory = g.Inventory;", "e.Inventory = g.Inventory; window.__BSO_MainGameCore = n.MainGameCore; window.__BSO_Inventory = g.Inventory; window.__BSO_PlayerController = P.PlayerController; window.__BSO_PlayerController2 = T.PlayerController2;");
-  if (!js.includes("window.__BSO_MainGameCore = n.MainGameCore") || !js.includes("window.__BSO_PlayerController = P.PlayerController") || !js.includes("window.__BSO_PlayerController2 = T.PlayerController2")) return res.status(500).send("Online sync could not find the original game's controller exports. Check the bundled engine version.");
+  js = js.replace("e.PlayerController2 = T.PlayerController2;", "e.PlayerController2 = T.PlayerController2; window.__BSO_MainGameCore = n.MainGameCore; window.__BSO_Inventory = g.Inventory; window.__BSO_PlayerController = P.PlayerController; window.__BSO_PlayerController2 = T.PlayerController2;");
+  if (!js.includes("e.PlayerController2 = T.PlayerController2; window.__BSO_MainGameCore = n.MainGameCore") || !js.includes("window.__BSO_PlayerController = P.PlayerController") || !js.includes("window.__BSO_PlayerController2 = T.PlayerController2")) return res.status(500).send("Online sync could not find the original game's controller exports. Check the bundled engine version.");
   res.type("application/javascript").send(js);
 });
 
