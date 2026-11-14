@@ -18,7 +18,7 @@ window.__BSO_UPDATE_NET_INPUTS=(who,next)=>{
  const now=performance.now();
  for(const direction of ["left","right"]){
   if(!previous[direction]&&!!next[direction]){
-   if(now-lastTap[who][direction]<460)dashPulse[who][direction]=true;
+   if(lastTap[who][direction]>0&&now-lastTap[who][direction]<460)dashPulse[who][direction]=true;
    lastTap[who][direction]=now;
   }
  }
