@@ -20,6 +20,8 @@ app.get("/play", (_req, res) => {
   const indexPath = path.join(ENGINE_DIR, "index.html");
   if (!fs.existsSync(indexPath)) return res.status(503).send("The original Basketball Legends 2019 game files have not been checked out. Run git submodule update --init --recursive.");
   let html = fs.readFileSync(indexPath, "utf8");
+  // The route is /play (without a trailing slash), so pin relative engine assets to /play/.
+  html = html.replace(/<head([^>]*)>/i, '<head$1><base href="/play/">');
   html = html.replace(/<script[^>]+src=["']patch\/js\/null\.js[^>]*><\/script>/gi, "");
   html = html.replace(/<script[^>]*>\s*var useEvents[\s\S]*?window\["GD_OPTIONS"\][\s\S]*?<\/script>/i, "");
   html = html.replace(/<script[^>]+src=["']js\/(?:analytics_ubg_v1_4|ubg235_client_v1_1)\.js[^>]*><\/script>/gi, "");
