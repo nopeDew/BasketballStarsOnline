@@ -30,17 +30,23 @@ app.get("/play", (_req, res) => {
   html = html.replace(/<script[^>]+src=["']patch\/js\/gd-sdk\.js[^>]*><\/script>/gi, "");
   const network = '<script src="/socket.io/socket.io.js"></script><script src="/engine-network.js"></script>';
   const engineScript = /<script[^>]+src=["']basketball_legends_2019\.min\.js[^>]*><\/script>/i;
+  if (engineScript.test(html)) html = html.replace(engineScript, network + "  const network = '<script src="/socket.io/socket.io.js"></script><script src="/engine-network.js"></script>';
+  const engineScript = /<script[^>]+src=["']basketball_legends_2019\.min\.js[^>]*><\/script>/i;
   if (engineScript.test(html)) html = html.replace(engineScript, network + "$&");
-  else html = html.replace("</body>", network + "</body>");
+  else html = html.replace("</body>", network + "</body>");" + '<script src="/engine-sync.js"></script>');
+  else html = html.replace("</body>", network + '<script src="/engine-sync.js"></script></body>');
   res.type("html").send(html);
 });
 
 // The original game hides local 2-player mode on touch/mobile detection. Keep its native button visible.
 app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
-  const gamePath = path.join(ENGINE_DIR, "basketball_legends_2019.min.js");
+  const gamePath = path.join(ENGINE_DIR, "basketball_legends_2019.f.js");
   if (!fs.existsSync(gamePath)) return res.sendStatus(404);
   let js = fs.readFileSync(gamePath, "utf8");
-  js = js.replace("this.playBtn2.visible=!1,", "");
+  // Expose the original game's own match core so the online sync layer can mirror
+  // authoritative match state without replacing its graphics, physics, or animations.
+  js = js.replace("e.MainGameCore = v", "e.MainGameCore = v, window.__BSO_MainGameCore = v, window.__BSO_Inventory = c.Inventory");
+  if (!js.includes("window.__BSO_MainGameCore = v")) return res.status(500).send("Could not attach online synchronization to the original game build.");
   res.type("application/javascript").send(js);
 });
 
@@ -158,6 +164,16 @@ io.on("connection", socket => {
     if (opponent && opponent.socketId) {
       io.to(opponent.socketId).emit("engineRemoteInput", { side: player.side, actions });
     }
+  });
+
+  // Player 1 is the authoritative simulation. Player 2 receives its snapshots.
+  socket.on("engineState", state => {
+    const room = rooms.get(socket.data.engineRoom);
+    const player = findPlayer(room, socket);
+    if (!room || !room.started || !player || player.side !== 1 || !state || !Array.isArray(state.objects)) return;
+    if (state.objects.length > 80) return;
+    const opponent = room.players.find(p => p.side === 2 && p.socketId);
+    if (opponent) io.to(opponent.socketId).emit("engineState", state);
   });
 
   socket.on("engineLeave", () => {
