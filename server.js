@@ -47,8 +47,10 @@ app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
   js = js.replace("this.playBtn2.visible = !1,", "");
   // Expose the original game's own match core so the online sync layer can mirror
   // authoritative match state without replacing its graphics, physics, or animations.
-  js = js.replace("e.MainGameCore = v", "e.MainGameCore = v, window.__BSO_MainGameCore = v, window.__BSO_Inventory = c.Inventory");
-  if (!js.includes("window.__BSO_MainGameCore = v")) return res.status(500).send("Could not attach online synchronization to the original game build.");
+  // These are the real export statements in the uploaded Basketball Legends bundle.
+  // Expose the classes from the game's webpack module so engine-sync.js can patch them.
+  js = js.replace("e.Inventory = g.Inventory;", "e.Inventory = g.Inventory; window.__BSO_MainGameCore = n.MainGameCore; window.__BSO_Inventory = g.Inventory;");
+  if (!js.includes("window.__BSO_MainGameCore = n.MainGameCore")) return res.status(500).send("Online sync could not find the original game's MainGameCore export. Check the bundled engine version.");
   res.type("application/javascript").send(js);
 });
 
