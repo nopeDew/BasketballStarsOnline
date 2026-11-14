@@ -10,7 +10,7 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: true } });
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
-const ENGINE_DIR = path.join(__dirname, "engine");
+const ENGINE_DIR = path.join(__dirname, "engine-source");
 const rooms = new Map();
 
 app.use(express.static(PUBLIC_DIR));
@@ -18,8 +18,10 @@ app.get("/health", (_req, res) => res.json({ ok: true, engineReady: fs.existsSyn
 
 app.get("/play", (_req, res) => {
   const indexPath = path.join(ENGINE_DIR, "index.html");
-  if (!fs.existsSync(indexPath)) return res.status(503).send("The original Basketball Legends 2019 game files have not been checked out. Run git submodule update --init --recursive.");
+  if (!fs.existsSync(indexPath)) return res.status(503).send("The original Basketball Legends 2019 game files have not been downloaded. Check the Render install logs for the engine clone step.");
   let html = fs.readFileSync(indexPath, "utf8");
+  // Remove the mirror's redirect to its hosted one-player page; run the bundled engine locally.
+  html = html.replace('window.location="https://ubg98.github.io/BasketballStars/";', "");
   // The route is /play (without a trailing slash), so pin relative engine assets to /play/.
   html = html.replace(/<head([^>]*)>/i, '<head$1><base href="/play/">');
   html = html.replace(/<script[^>]+src=["']patch\/js\/null\.js[^>]*><\/script>/gi, "");
