@@ -5,7 +5,7 @@
   "description": "Online 1v1 lobby and input relay for the original Basketball Legends 2019 game",
   "main": "server.js",
   "scripts": {
-    "postinstall": "git submodule update --init --depth 1",
+    "postinstall": "git clone --depth 1 --branch main https://github.com/BasketballStarsUnblocked/BasketballStarsUnblocked.github.io.git engine-source || (cd engine-source && git pull --ff-only)",
     "start": "node server.js"
   },
   "engines": {
