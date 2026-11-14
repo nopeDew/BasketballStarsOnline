@@ -23,7 +23,8 @@ app.get("/play", (_req, res) => {
   // Remove the mirror's redirect to its hosted one-player page; run the bundled engine locally.
   html = html.replace('window.location="https://ubg98.github.io/BasketballStars/";', "");
   // The route is /play (without a trailing slash), so pin relative engine assets to /play/.
-  html = html.replace(/<head([^>]*)>/i, '<head$1><base href="/play/">');
+  const bootDiagnostics = '<script>(function(){function show(message){var box=document.getElementById("bso-boot-error");if(!box){box=document.createElement("pre");box.id="bso-boot-error";box.style.cssText="position:fixed;z-index:999999;left:12px;right:12px;bottom:12px;max-height:40vh;overflow:auto;white-space:pre-wrap;background:#260d12;color:#fff;border:1px solid #ff6978;border-radius:10px;padding:12px;font:12px monospace";document.body.appendChild(box)}box.textContent=message}window.addEventListener("error",function(e){if(e.message)show("GAME SCRIPT ERROR\\n"+e.message+"\\n"+(e.filename||"")+" : "+(e.lineno||""))},true);window.addEventListener("unhandledrejection",function(e){show("GAME PROMISE ERROR\\n"+String(e.reason&&e.reason.stack||e.reason))});window.addEventListener("DOMContentLoaded",function(){setTimeout(function(){if(!document.querySelector("#content canvas"))show("The original game did not create its canvas. The engine or a startup script failed to load. Reload after the latest Render deploy.")},10000)})})();</script>';
+  html = html.replace(/<head([^>]*)>/i, '<head$1><base href="/play/>' + bootDiagnostics);
   html = html.replace(/<script[^>]+src=["']patch\/js\/null\.js[^>]*><\/script>/gi, "");
   html = html.replace(/<script[^>]*>\s*var useEvents[\s\S]*?window\["GD_OPTIONS"\][\s\S]*?<\/script>/i, "");
   html = html.replace(/<script[^>]+src=["']js\/(?:analytics_ubg_v1_4|ubg235_client_v1_1)\.js[^>]*><\/script>/gi, "");
@@ -45,11 +46,14 @@ app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
   let js = fs.readFileSync(gamePath, "utf8");
   // Keep the original local 2-player menu option visible in this browser build.
   js = js.replace("this.playBtn2.visible = !1,", "");
+  // Prefer Phaser.AUTO so browsers without working WebGL can fall back to Canvas.
+  js = js.replace("renderer: Phaser.WEBGL,", "renderer: Phaser.AUTO,");
   // Expose the original game's own match core so the online sync layer can mirror
   // authoritative match state without replacing its graphics, physics, or animations.
   // These are the real export statements in the uploaded Basketball Legends bundle.
   // Expose the classes from the game's webpack module so engine-sync.js can patch them.
   js = js.replace("e.PlayerController2 = T.PlayerController2;", "e.PlayerController2 = T.PlayerController2; window.__BSO_MainGameCore = n.MainGameCore; window.__BSO_Inventory = g.Inventory; window.__BSO_PlayerController = P.PlayerController; window.__BSO_PlayerController2 = T.PlayerController2;");
+  if (!js.includes("renderer: Phaser.AUTO,")) return res.status(500).send("Could not apply the WebGL fallback patch to the original game.");
   if (!js.includes("e.PlayerController2 = T.PlayerController2; window.__BSO_MainGameCore = n.MainGameCore") || !js.includes("window.__BSO_PlayerController = P.PlayerController") || !js.includes("window.__BSO_PlayerController2 = T.PlayerController2")) return res.status(500).send("Online sync could not find the original game's controller exports. Check the bundled engine version.");
   res.type("application/javascript").send(js);
 });
