@@ -35,6 +35,15 @@ app.get("/play", (_req, res) => {
   res.type("html").send(html);
 });
 
+// The original game hides local 2-player mode on touch/mobile detection. Keep its native button visible.
+app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
+  const gamePath = path.join(ENGINE_DIR, "basketball_legends_2019.min.js");
+  if (!fs.existsSync(gamePath)) return res.sendStatus(404);
+  let js = fs.readFileSync(gamePath, "utf8");
+  js = js.replace("this.playBtn2.visible=!1,", "");
+  res.type("application/javascript").send(js);
+});
+
 app.use("/play", express.static(ENGINE_DIR, { index: false }));
 
 function cleanName(value) {
