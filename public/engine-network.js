@@ -24,8 +24,9 @@ window.__BSO_UPDATE_NET_INPUTS=(who,next)=>{
  }
  inputs[who]={...next};
 };
-window.__BSO_CONSUME_NET_DASH=who=>{
+window.__BSO_CONSUME_NET_DASH=(who,direction)=>{
  const d=dashPulse[who]||{};
+ if(direction){const value=!!d[direction];d[direction]=false;return value;}
  const value=d.left?-1:d.right?1:0;
  d.left=false;d.right=false;
  return value;
@@ -71,18 +72,26 @@ function status(message){const el=document.getElementById("bso-status");if(el)el
 addPanel();
 socket.on("connect",()=>{
  if(!roomCode||!sessionId){status("Missing room session. Return to the lobby.");return}
+ status("Connected to server · rejoining room "+roomCode+"…");
  socket.emit("engineResume",{code:roomCode,sessionId});
 });
+socket.on("connect_error",error=>status("Server connection failed · "+(error&&error.message||"retrying")));
+
 socket.on("engineRoomJoined",r=>{
  side=r.side;remoteSide=side===1?2:1;ready=true;
  window.__BSO_UPDATE_NET_INPUTS(side,localState);
- status("Connected · Room "+r.code+" · You control Player "+side);
+ status("Room "+r.code+" connected · You control Player "+side+" · syncing opponent");
 });
-socket.on("engineGameStart",()=>status("Connected to opponent · Start the original 2-player match"));
+socket.on("engineGameStart",()=>status("Opponent connected · starting the original 1-v-1 match"));
+let remotePackets=0;
+
 socket.on("engineRemoteInput",packet=>{
  if(packet.side!==remoteSide)return;
  remoteState={...(packet.actions||{})};
  window.__BSO_UPDATE_NET_INPUTS(remoteSide,remoteState);
+ remotePackets++;
+ if(remotePackets===1)status("Opponent input received · Player "+remoteSide+" linked");
+
 });
 socket.on("engineOpponentDisconnected",()=>{releaseAll();status("Opponent disconnected. Waiting for reconnection…")});
 socket.on("engineOpponentReconnected",()=>status("Opponent reconnected."));
@@ -104,6 +113,7 @@ window.addEventListener("keyup",event=>{
  const action=actions.find(a=>bindings[a]===event.code);
  if(action){event.preventDefault();event.stopImmediatePropagation();setAction(action,false)}
 },true);
+socket.on("engineOpponentLeft",()=>{releaseAll();status("Opponent left the room.");});
 window.addEventListener("blur",releaseAll);
 window.addEventListener("beforeunload",releaseAll);
 setInterval(sendLocal,50);
