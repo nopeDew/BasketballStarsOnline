@@ -43,6 +43,8 @@ app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
   const gamePath = path.join(ENGINE_DIR, "basketball_legends_2019.f.js");
   if (!fs.existsSync(gamePath)) return res.sendStatus(404);
   let js = fs.readFileSync(gamePath, "utf8");
+  // Keep the original local 2-player menu option visible in this browser build.
+  js = js.replace("this.playBtn2.visible = !1,", "");
   // Expose the original game's own match core so the online sync layer can mirror
   // authoritative match state without replacing its graphics, physics, or animations.
   js = js.replace("e.MainGameCore = v", "e.MainGameCore = v, window.__BSO_MainGameCore = v, window.__BSO_Inventory = c.Inventory");
