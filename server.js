@@ -24,7 +24,7 @@ app.get("/play", (_req, res) => {
   html = html.replace('window.location="https://ubg98.github.io/BasketballStars/";', "");
   // The route is /play (without a trailing slash), so pin relative engine assets to /play/.
   const bootDiagnostics = '<script>(function(){function show(message){var box=document.getElementById("bso-boot-error");if(!box){box=document.createElement("pre");box.id="bso-boot-error";box.style.cssText="position:fixed;z-index:999999;left:12px;right:12px;bottom:12px;max-height:40vh;overflow:auto;white-space:pre-wrap;background:#260d12;color:#fff;border:1px solid #ff6978;border-radius:10px;padding:12px;font:12px monospace";document.body.appendChild(box)}box.textContent=message}window.addEventListener("error",function(e){if(e.message)show("GAME SCRIPT ERROR\\n"+e.message+"\\n"+(e.filename||"")+" : "+(e.lineno||""))},true);window.addEventListener("unhandledrejection",function(e){show("GAME PROMISE ERROR\\n"+String(e.reason&&e.reason.stack||e.reason))});window.addEventListener("DOMContentLoaded",function(){setTimeout(function(){if(!document.querySelector("#content canvas"))show("The original game did not create its canvas. The engine or a startup script failed to load. Reload after the latest Render deploy.")},10000)})})();</script>';
-  html = html.replace(/<head([^>]*)>/i, '<head$1><base href="/play/>' + bootDiagnostics);
+  html = html.replace(/<head([^>]*)>/i, '<head$1><base href="/play/">' + bootDiagnostics);
   html = html.replace(/<script[^>]+src=["']patch\/js\/null\.js[^>]*><\/script>/gi, "");
   html = html.replace(/<script[^>]*>\s*var useEvents[\s\S]*?window\["GD_OPTIONS"\][\s\S]*?<\/script>/i, "");
   html = html.replace(/<script[^>]+src=["']js\/(?:analytics_ubg_v1_4|ubg235_client_v1_1)\.js[^>]*><\/script>/gi, "");
