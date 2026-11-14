@@ -30,11 +30,11 @@ app.get("/play", (_req, res) => {
   html = html.replace(/<script[^>]+src=["']patch\/js\/gd-sdk\.js[^>]*><\/script>/gi, "");
   const network = '<script src="/socket.io/socket.io.js"></script><script src="/engine-network.js"></script>';
   const engineScript = /<script[^>]+src=["']basketball_legends_2019\.min\.js[^>]*><\/script>/i;
-  if (engineScript.test(html)) html = html.replace(engineScript, network + "  const network = '<script src="/socket.io/socket.io.js"></script><script src="/engine-network.js"></script>';
-  const engineScript = /<script[^>]+src=["']basketball_legends_2019\.min\.js[^>]*><\/script>/i;
-  if (engineScript.test(html)) html = html.replace(engineScript, network + "$&");
-  else html = html.replace("</body>", network + "</body>");" + '<script src="/engine-sync.js"></script>');
-  else html = html.replace("</body>", network + '<script src="/engine-sync.js"></script></body>');
+  if (engineScript.test(html)) {
+    html = html.replace(engineScript, (_match) => network + _match + '<script src="/engine-sync.js"></script>');
+  } else {
+    html = html.replace("</body>", network + '<script src="/engine-sync.js"></script></body>');
+  }
   res.type("html").send(html);
 });
 
