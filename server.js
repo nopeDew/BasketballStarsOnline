@@ -32,7 +32,7 @@ app.get("/play", (_req, res) => {
   const network = '<script src="/socket.io/socket.io.js"></script><script src="/engine-network.js"></script>';
   const engineScript = /<script[^>]+src=["']basketball_legends_2019\.min\.js[^>]*><\/script>/i;
   if (engineScript.test(html)) {
-    html = html.replace(engineScript, (_match) => network + _match + '<script src="/engine-controller-sync.js"></script><script src="/engine-sync.js"></script>');
+    html = html.replace(engineScript, (_match) => network + _match + '<script src="/engine-autostart.js"></script><script src="/engine-controller-sync.js"></script><script src="/engine-sync.js"></script>');
   } else {
     html = html.replace("</body>", network + '<script src="/engine-sync.js"></script></body>');
   }
@@ -52,9 +52,9 @@ app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
   // authoritative match state without replacing its graphics, physics, or animations.
   // These are the real export statements in the uploaded Basketball Legends bundle.
   // Expose the classes from the game's webpack module so engine-sync.js can patch them.
-  js = js.replace("e.PlayerController2 = T.PlayerController2;", "e.PlayerController2 = T.PlayerController2; window.__BSO_MainGameCore = n.MainGameCore; window.__BSO_Inventory = g.Inventory; window.__BSO_PlayerController = P.PlayerController; window.__BSO_PlayerController2 = T.PlayerController2;");
+  js = js.replace("e.PlayerController2 = T.PlayerController2;", "e.PlayerController2 = T.PlayerController2; window.__BSO_MainGameCore = n.MainGameCore; window.__BSO_Inventory = g.Inventory; window.__BSO_PlayerController = P.PlayerController; window.__BSO_PlayerController2 = T.PlayerController2; window.__BSO_InputManagerClass = i(14).default; window.__BSO_MenuClass = i(33).default; window.__BSO_RandomStateClass = i(26).default;");
   if (!js.includes("renderer: Phaser.AUTO,")) return res.status(500).send("Could not apply the WebGL fallback patch to the original game.");
-  if (!js.includes("e.PlayerController2 = T.PlayerController2; window.__BSO_MainGameCore = n.MainGameCore") || !js.includes("window.__BSO_PlayerController = P.PlayerController") || !js.includes("window.__BSO_PlayerController2 = T.PlayerController2")) return res.status(500).send("Online sync could not find the original game's controller exports. Check the bundled engine version.");
+  if (!js.includes("e.PlayerController2 = T.PlayerController2; window.__BSO_MainGameCore = n.MainGameCore") || !js.includes("window.__BSO_PlayerController = P.PlayerController") || !js.includes("window.__BSO_PlayerController2 = T.PlayerController2") || !js.includes("window.__BSO_InputManagerClass = i(14).default") || !js.includes("window.__BSO_MenuClass = i(33).default") || !js.includes("window.__BSO_RandomStateClass = i(26).default")) return res.status(500).send("Online sync could not find the original game's controller exports. Check the bundled engine version.");
   res.type("application/javascript").send(js);
 });
 
