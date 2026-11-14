@@ -11,7 +11,7 @@ function readBody(body){
   return {x:clamp(body.position.x),y:clamp(body.position.y),vx:clamp(body.velocity.x),vy:clamp(body.velocity.y),rotation:clamp(body.rotation),angularVel:clamp(body.angularVel)};
 }
 function makeSnapshot(core){
-  const objects=(core.updated||[]).slice(0,250).map((o,i)=>{
+  const objects=(core.objects||[]).slice(0,250).map((o,i)=>{
     const g=o&&o.graphic,b=o&&o.body;
     const item={i};
     if(g){item.x=clamp(g.x);item.y=clamp(g.y);item.r=clamp(g.rotation);item.visible=g.visible!==false;item.alpha=clamp(g.alpha);}
@@ -33,7 +33,7 @@ function makeSnapshot(core){
 function applySnapshot(core,s){
   if(!s||!Array.isArray(s.objects))return;
   for(const item of s.objects){
-    const o=core.updated&&core.updated[item.i];if(!o)continue;
+    const o=core.objects&&core.objects[item.i];if(!o)continue;
     const g=o.graphic,b=o.body;
     if(b&&item.body){
       const p=item.body;
@@ -75,7 +75,7 @@ function install(){
   const original=C.prototype.update;
   C.prototype.update=function(dt){
     original.call(this,dt);
-    if(!this.updated||!this.updated.length)return;
+    if(!this.objects||!this.objects.length)return;
     if(side===1){
       const now=Date.now();
       if(this.isPlaying&&now-lastSend>=50){
