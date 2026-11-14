@@ -1,6 +1,6 @@
 # Basketball Stars Online
 
-An online 1v1 lobby and keyboard-input relay for the original **Basketball Legends 2019** game build. The original game engine, characters, animations, court, physics, and native two-player mode are supplied through the engine Git submodule; this project does not replace the gameplay with a new basketball game.
+An online 1v1 lobby and keyboard-input relay for the original **Basketball Legends 2019** game build. The original game engine, characters, animations, court, physics, and native two-player mode are downloaded from the supplied `BasketballStarsUnblocked/BasketballStarsUnblocked.github.io` source repository during installation; this project does not replace the gameplay with a new basketball game.
 
 ## How it works
 
@@ -22,7 +22,7 @@ Create a **Web Service** connected to this repository:
 - Start command: **npm start**
 - Optional health check path: **/health**
 
-The postinstall script initializes the pinned game-engine submodule. Render supplies the PORT environment variable automatically.
+The postinstall script clones the original game source into `engine-source` and removes the source page's redirect to its hosted one-player page when serving `/play`. Render supplies the PORT environment variable automatically.
 
 ## Play
 
@@ -38,6 +38,6 @@ The default physical layout is A/D to move, W to jump, S to down/block, J to sho
 
 ## Tech
 
-- Original Basketball Legends 2019 browser game build (pinned Git submodule)
+- Original Basketball Legends 2019 browser game build (downloaded from the source repository during install)
 - Node.js + Express
 - Socket.IO private rooms and player input relay
