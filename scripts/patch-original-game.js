@@ -46,7 +46,8 @@ source = replaceUnique(
   '        window.__BSO_Inventory = g.Inventory;\n' +
   '        window.__BSO_PlayerController = P.PlayerController;\n' +
   '        window.__BSO_PlayerController2 = T.PlayerController2;\n' +
-  '        if (T.PlayerController2 && T.PlayerController2.prototype) {\n' +
+  '        /* BSO_ONLINE_P2_CONTROLLER */\n' +
+'        if (T.PlayerController2 && T.PlayerController2.prototype) {\n' +
   '            var bsoNativeP2Update = T.PlayerController2.prototype.update;\n' +
   '            T.PlayerController2.prototype.update = function() {\n' +
   '                bsoNativeP2Update.apply(this, arguments);\n' +
