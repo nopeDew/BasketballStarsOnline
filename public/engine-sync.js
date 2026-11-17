@@ -60,7 +60,8 @@ function applyObject(o,item){
   if(typeof item.visible==="boolean")g.visible=item.visible;
   if(Number.isFinite(item.alpha))g.alpha=item.alpha;
  }
- if(typeof item.state==="string"&&o.state!==item.state){
+ if(typeof item.state==="string"&&(o.state!==item.state||(Number.isFinite(item.side)&&o.SIDE!==item.side))){
+  // Possession can switch teams while the ball remains in the same "inHands" state.
   if(typeof o.setState==="function"){try{o.setState(item.state,item.side===undefined?2:item.side,0,true)}catch(_){o.state=item.state;}}
   else o.state=item.state;
  }
