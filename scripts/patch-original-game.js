@@ -109,6 +109,7 @@ const randomReplacement =
   '        e\n' +
   '    }(Phaser.State);\n' +
   '    /* BSO_ONLINE_SELECTION_READY */\n' +
+  '    /* BSO_ONLINE_REMATCH_READY */\n' +
   '    if (typeof window !== "undefined") {\n' +
   '        var bsoOriginalRandomCreate = _.prototype.create;\n' +
   '        _.prototype.create = function() {\n' +
