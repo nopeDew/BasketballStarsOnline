@@ -21,7 +21,8 @@ app.get("/health", (_req, res) => {
   const source = sourceExists ? fs.readFileSync(sourcePath, "utf8") : "";
   const onlinePatched = source.includes("BSO_ONLINE_SOURCE_PATCH") &&
     source.includes("BSO_ONLINE_AUTOSTART_MENU") &&
-    source.includes("BSO_ONLINE_AUTOSTART_RANDOMSTATE") &&\n    source.includes("BSO_ONLINE_P2_CONTROLLER");
+    source.includes("BSO_ONLINE_AUTOSTART_RANDOMSTATE") &&
+    source.includes("BSO_ONLINE_P2_CONTROLLER");
   res.json({ ok: true, engineReady, sourceExists, onlinePatched });
 });
 
@@ -32,7 +33,10 @@ app.get("/play", (_req, res) => {
   // Remove the mirror's redirect to its hosted one-player page; run the bundled engine locally.
   html = html.replace('window.location="https://ubg98.github.io/BasketballStars/";', "");
   // The route is /play (without a trailing slash), so pin relative engine assets to /play/.
-  const bootDiagnostics = '<script>(function(){function show(message){var box=document.getElementById("bso-boot-error");if(!box){box=document.createElement("pre");box.id="bso-boot-error";box.style.cssText="position:fixed;z-index:999999;left:12px;right:12px;bottom:12px;max-height:40vh;overflow:auto;white-space:pre-wrap;background:#260d12;color:#fff;border:1px solid #ff6978;border-radius:10px;padding:12px;font:12px monospace";document.body.appendChild(box)}box.textContent=message}window.addEventListener("error",function(e){if(e.message)show("GAME SCRIPT ERROR\\n"+e.message+"\\n"+(e.filename||"")+" : "+(e.lineno||""))},true);window.addEventListener("unhandledrejection",function(e){show("GAME PROMISE ERROR\\n"+String(e.reason&&e.reason.stack||e.reason))});window.addEventListener("DOMContentLoaded",function(){setTimeout(function(){if(!document.querySelector("#content canvas"))show("The original game did not create its canvas. The engine or a startup script failed to load. Reload after the latest Render deploy.")},10000)})})();</script>';
+  const bootDiagnostics = '<script>(function(){function show(message){var box=document.getElementById("bso-boot-error");if(!box){box=document.createElement("pre");box.id="bso-boot-error";box.style.cssText="position:fixed;z-index:999999;left:12px;right:12px;bottom:12px;max-height:40vh;overflow:auto;white-space:pre-wrap;background:#260d12;color:#fff;border:1px solid #ff6978;border-radius:10px;padding:12px;font:12px monospace";document.body.appendChild(box)}box.textContent=message}window.addEventListener("error",function(e){if(e.message)show("GAME SCRIPT ERROR\
+"+e.message+"\
+"+(e.filename||"")+" : "+(e.lineno||""))},true);window.addEventListener("unhandledrejection",function(e){show("GAME PROMISE ERROR\
+"+String(e.reason&&e.reason.stack||e.reason))});window.addEventListener("DOMContentLoaded",function(){setTimeout(function(){if(!document.querySelector("#content canvas"))show("The original game did not create its canvas. The engine or a startup script failed to load. Reload after the latest Render deploy.")},10000)})})();</script>';
   html = html.replace(/<head([^>]*)>/i, '<head$1><base href="/play/">' + bootDiagnostics);
   html = html.replace(/<script[^>]+src=["']patch\/js\/null\.js[^>]*><\/script>/gi, "");
   html = html.replace(/<script[^>]*>\s*var useEvents[\s\S]*?window\["GD_OPTIONS"\][\s\S]*?<\/script>/i, "");
@@ -60,7 +64,8 @@ app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
     "window.__BSO_INSTALL_INPUT_MANAGER(r)",
     "window.__BSO_MainGameCore = n.MainGameCore",
     "BSO_ONLINE_AUTOSTART_MENU",
-    "BSO_ONLINE_AUTOSTART_RANDOMSTATE",\n    "BSO_ONLINE_P2_CONTROLLER",
+    "BSO_ONLINE_AUTOSTART_RANDOMSTATE",
+    "BSO_ONLINE_P2_CONTROLLER",
     "renderer: Phaser.AUTO,"
   ];
   const missing = requiredMarkers.filter(marker => !js.includes(marker));
