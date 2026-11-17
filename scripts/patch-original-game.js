@@ -46,6 +46,18 @@ source = replaceUnique(
   '        window.__BSO_Inventory = g.Inventory;\n' +
   '        window.__BSO_PlayerController = P.PlayerController;\n' +
   '        window.__BSO_PlayerController2 = T.PlayerController2;\n' +
+  '        if (T.PlayerController2 && T.PlayerController2.prototype) {\n' +
+  '            var bsoNativeP2Update = T.PlayerController2.prototype.update;\n' +
+  '            T.PlayerController2.prototype.update = function() {\n' +
+  '                bsoNativeP2Update.apply(this, arguments);\n' +
+  '                var input = window.__BSO_NET_INPUTS && window.__BSO_NET_INPUTS[2] || {};\n' +
+  '                this.currentMove = (input.right ? 1 : 0) - (input.left ? 1 : 0);\n' +
+  '                this.currentJump = !!input.jump;\n' +
+  '                this.currentAction = !!input.shoot;\n' +
+  '                this.currentSuper = !!input.super;\n' +
+  '                this.currentBlockOrPump = !!input.down;\n' +
+  '            };\n' +
+  '        }\n' +
   '    }',
   'original game core export block'
 );
