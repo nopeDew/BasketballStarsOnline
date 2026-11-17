@@ -102,7 +102,7 @@ function addPanel(){
  document.head.append(style);
  const box=document.createElement("div");box.id="bso-network";
  const controlText="Controls: A / D move · W jump · S block · J shoot · K special";
- box.innerHTML='<div><b>BASKETBALL STARS ONLINE</b> · PLAYER '+side+'</div><div id="bso-status" class="muted">Connecting to your opponent…</div><div id="bso-controls" class="muted">'+controlText+'</div><div id="bso-input-status" class="muted">Waiting for your first input…</div><details><summary>CUSTOMIZE YOUR CONTROLS</summary><div id="bso-bindings"></div><button id="bso-reset" type="button">RESET DEFAULTS</button></details><button id="bso-leave" type="button" style="margin-top:8px">LEAVE MATCH</button>';
+ box.innerHTML='<div><b>BASKETBALL STARS ONLINE</b> · PLAYER '+side+'</div><div id="bso-status" class="muted">Connecting to your opponent…</div><div id="bso-controls" class="muted">'+controlText+'</div><div id="bso-input-status" class="muted">Waiting for your first input…</div><div id="bso-p2-debug" class="muted">Player 2 controller: waiting for game loop…</div><details><summary>CUSTOMIZE YOUR CONTROLS</summary><div id="bso-bindings"></div><button id="bso-reset" type="button">RESET DEFAULTS</button></details><button id="bso-leave" type="button" style="margin-top:8px">LEAVE MATCH</button>';
  document.body.append(box);drawBindings();
  document.getElementById("bso-reset").onclick=()=>{bindings={...defaults};save()};
  document.getElementById("bso-leave").onclick=()=>{socket.emit("engineLeave");location.href="/"};
@@ -167,4 +167,11 @@ socket.on("engineOpponentLeft",()=>{releaseAll();status("Opponent left the room.
 window.addEventListener("blur",releaseAll);
 window.addEventListener("beforeunload",releaseAll);
 setInterval(sendLocal,50);
+setInterval(()=>{
+ const el=document.getElementById("bso-p2-debug");if(!el)return;
+ const input=window.__BSO_NET_INPUTS&&window.__BSO_NET_INPUTS[2]||{};
+ const ctrl=window.__BSO_P2_CONTROLLER_DEBUG;
+ const keys=["left","right","jump","down","shoot","super"].filter(k=>input[k]);
+ el.textContent="P2 net input: "+(keys.join(", ")||"none")+" · P2 controller: "+(ctrl?("move "+ctrl.move+", jump "+!!ctrl.jump+", shoot "+!!ctrl.shoot+", block "+!!ctrl.block):"not reporting");
+},200);
 })();
