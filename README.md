@@ -17,7 +17,7 @@ The Render install step extracts the original source archive and patches the act
 - Returns the remaining player to the room/loading screen when their opponent explicitly leaves or disconnects.
 - Keeps the original two-player menu path available and allows Phaser to fall back to Canvas where WebGL is unavailable.
 
-Player 1 runs the authoritative original-game simulation and sends match snapshots to Player 2 at approximately 30 updates per second. Snapshots use volatile delivery under network pressure, and Player 2 applies each new host snapshot only once rather than repeatedly reapplying the same frame during every render update. The ball is sent only once per snapshot, and each player's original possession flag is mirrored so the clients agree on who has the ball. The native selection-ready handshake is reopened on each return to character selection so another round can start in the same room.
+Player 1 runs the authoritative original-game simulation and sends match snapshots to Player 2 at approximately 30 updates per second. Snapshots use volatile delivery under network pressure. Player 2 smoothly reconciles its local prediction against host snapshots instead of snapping physics bodies to every received position, and snapshots omit static decoration that does not need replication. Input changes are sent immediately with a low-rate volatile heartbeat to repair missed key-up states. The ball is sent only once per snapshot, and each player's original possession flag is mirrored so the clients agree on who has the ball. The native selection-ready handshake is reopened on each return to character selection so another round can start in the same room.
 
 ## How to play
 
