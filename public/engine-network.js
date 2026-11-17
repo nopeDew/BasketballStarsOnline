@@ -160,6 +160,15 @@ function returnToLoadingScreen(message){
   setTimeout(navigate,700);
  }else navigate();
 }
+function notifySelectionOpened(){
+ if(socket.connected&&ready){
+  window.__BSO_SELECTION_OPEN_PENDING=false;
+  socket.emit("engineSelectionOpened");
+ }else{
+  window.__BSO_SELECTION_OPEN_PENDING=true;
+ }
+}
+window.__BSO_NOTIFY_SELECTION_OPENED=notifySelectionOpened;
 function getMatchData(){
  const inventory=window.__BSO_Inventory;
  return inventory&&inventory.instance&&inventory.instance.matchData||null;
@@ -234,6 +243,7 @@ socket.on("engineRoomJoined",r=>{
  const controls=document.getElementById("bso-controls");if(controls)controls.textContent=controlsText(layout);
  drawBindings();
  window.__BSO_UPDATE_NET_INPUTS(side,localState);
+ if(window.__BSO_SELECTION_OPEN_PENDING)notifySelectionOpened();
  status("Room "+r.code+" connected · You control Player "+side+" · syncing opponent");
 });
 socket.on("engineGameStart",()=>status("Both players are in · choose your characters, then press PLAY"));
