@@ -247,13 +247,17 @@ io.on("connection", socket => {
     if (opponent) io.to(opponent.socketId).emit("engineState", state);
   });
 
-  socket.on("engineLeave", () => {
+  socket.on("engineLeave", acknowledge => {
     const room = rooms.get(socket.data.engineRoom);
     const player = findPlayer(room, socket);
-    if (!room || !player) return;
+    if (!room || !player) {
+      if (typeof acknowledge === "function") acknowledge({ ok: true });
+      return;
+    }
     socket.leave(room.code);
     delete socket.data.engineRoom;
     removePlayer(room, player);
+    if (typeof acknowledge === "function") acknowledge({ ok: true });
   });
 
   socket.on("disconnect", () => {
@@ -261,10 +265,9 @@ io.on("connection", socket => {
     if (!room) return;
     const player = room.players.find(p => p.socketId === socket.id);
     if (!player) return;
-    player.socketId = null;
-    const opponent = room.players.find(p => p !== player && p.socketId);
-    if (opponent) io.to(opponent.socketId).emit("engineOpponentDisconnected");
-    updateRoom(room);
+    // A disconnected player has left the match. Remove them and send the remaining
+    // player through the same lobby-return path as an explicit leave.
+    removePlayer(room, player);
   });
 });
 
