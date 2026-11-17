@@ -24,7 +24,7 @@ Player 1 runs the authoritative original-game simulation and sends match snapsho
 5. Both players select **I'M READY**.
 6. The original game opens its native character-selection screen. Take your time choosing your player.
 7. Each player presses the original **PLAY** button. The match starts on both devices only after both players have pressed it.
-8. Both devices use the same defaults: A/D to move, W to jump, S to block/down, J to shoot, and K for the special action. Controls can be changed in the online overlay.
+8. Player 1 uses A/D to move, W to jump, S to block/down, B to shoot, and V for the special action. Player 2 uses the arrow keys to move/jump/block, L to shoot, and K for the special action. Each player's custom controls are saved separately.
 
 ## Deploy on Render
 
