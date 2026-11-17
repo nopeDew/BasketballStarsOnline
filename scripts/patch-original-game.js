@@ -66,6 +66,16 @@ source = replaceUnique(
   'original game core export block'
 );
 
+// Expose and hook the original game's native character selector for live online synchronization.
+source = replaceUnique(
+  source,
+  '    e.SelectPlayer = c',
+  '    e.SelectPlayer = c;\n' +
+  '    /* BSO_ONLINE_SELECT_PLAYER_SYNC */\n' +
+  '    if (typeof window !== "undefined" && typeof window.__BSO_INSTALL_SELECT_PLAYER === "function") window.__BSO_INSTALL_SELECT_PLAYER(c)',
+  'original character selector export'
+);
+
 // Automatically enter the native 2-player flow from the game's real title menu.
 const menuAnchor = '    e.Name = "menu",\n        e\n    }(Phaser.State);\n    e.default = _';
 const menuReplacement =
@@ -113,7 +123,11 @@ const randomReplacement =
   '                        state.__bsoOriginalPlayInvoked = !0;\n' +
   '                        return originalPlay.apply(state, arguments);\n' +
   '                    };\n' +
-  '                    if (window.__BSO_SOCKET) window.__BSO_SOCKET.emit("engineSelectionReady");\n' +
+  '                    var bsoInventory = window.__BSO_Inventory;\n' +
+  '                    var bsoMatchData = bsoInventory && bsoInventory.instance && bsoInventory.instance.matchData;\n' +
+  '                    var bsoSideIndex = (Number(window.__BSO_NET_LOCAL_SIDE) || 1) - 1;\n' +
+  '                    var bsoSelection = bsoMatchData && bsoMatchData.teams && bsoMatchData.players && bsoMatchData.players[bsoSideIndex] ? {team:Number(bsoMatchData.teams[bsoSideIndex]),player:Number(bsoMatchData.players[bsoSideIndex][0])} : null;\n' +
+  '                    if (window.__BSO_SOCKET) window.__BSO_SOCKET.emit("engineSelectionReady", {selection:bsoSelection});\n' +
   '                    if (typeof window.__BSO_SELECTION_WAITING === "function") window.__BSO_SELECTION_WAITING();\n' +
   '                    if (window.__BSO_SELECTION_START_PENDING && typeof window.__BSO_SELECTION_START === "function") {\n' +
   '                        window.__BSO_SELECTION_START_PENDING = !1;\n' +
@@ -121,7 +135,9 @@ const randomReplacement =
   '                    }\n' +
   '                };\n' +
   '            }\n' +
-  '            return bsoOriginalRandomCreate.apply(this, arguments);\n' +
+  '            var bsoResult = bsoOriginalRandomCreate.apply(this, arguments);\n' +
+  '            if (window.__BSO_ONLINE_MATCH) window.__BSO_CURRENT_SELECTION_STATE = this;\n' +
+  '            return bsoResult;\n' +
   '        };\n' +
   '    }\n' +
   '    e.default = _';
