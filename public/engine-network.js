@@ -154,11 +154,13 @@ window.addEventListener("keydown",event=>{
   if(conflict){status("That key is already assigned.");return}
   bindings[capture]=event.code;capture=null;save();return;
  }
+ // Let the original game receive keyboard input on its character-selection screen.
+ if(!window.__BSO_GAMEPLAY_ACTIVE)return;
  const action=actions.find(a=>bindings[a]===event.code);
  if(action){event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)setAction(action,true)}
 },true);
 window.addEventListener("keyup",event=>{
- if(!event.isTrusted)return;
+ if(!event.isTrusted||!window.__BSO_GAMEPLAY_ACTIVE)return;
  const action=actions.find(a=>bindings[a]===event.code);
  if(action){event.preventDefault();event.stopImmediatePropagation();setAction(action,false)}
 },true);
