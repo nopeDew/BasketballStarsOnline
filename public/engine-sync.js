@@ -4,7 +4,7 @@ const socket=window.__BSO_SOCKET;
 const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
-let latest=null,lastSend=0;
+let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
 const clamp=n=>Number.isFinite(n)?n:0;
 function readBody(body){
  if(!body||!body.position||!body.velocity)return null;
@@ -33,6 +33,7 @@ function makeSnapshot(core){
  });
  const inv=window.__BSO_Inventory,md=inv&&inv.instance&&inv.instance.matchData;
  return {
+  sequence:++snapshotSequence,
   objects,
   ball:core.ball?readObject(core.ball,-1,0):null,
   playing:!!core.isPlaying,paused:!!core.isPaused,scored:!!core.isScored,waiting:!!core.isWaiting,
@@ -98,8 +99,6 @@ function applySnapshot(core,s){
   if(core.infoPanel&&typeof core.infoPanel.updateScore==="function")core.infoPanel.updateScore(s.scores[0],s.scores[1]);
   if(core.timer&&typeof core.timer.updateScore==="function"){core.timer.updateScore(1,s.scores[0]);core.timer.updateScore(-1,s.scores[1]);}
  }
- if(core.physics&&typeof core.physics.updateGraphics==="function"){try{core.physics.updateGraphics()}catch(_){}}
- if(core.ball&&typeof core.ball.updateGraphic==="function"){try{core.ball.updateGraphic()}catch(_){}}
 }
 function install(){
  const C=window.__BSO_MainGameCore;
@@ -111,8 +110,14 @@ function install(){
   if(!this.objects||!this.objects.length)return;
   if(side===1){
    const now=Date.now();
-   if(now-lastSend>=33){lastSend=now;socket.emit("engineState",makeSnapshot(this));}
-  }else if(latest)applySnapshot(this,latest);
+   // Volatile snapshots keep real-time state fresh instead of queueing stale frames under load.
+   if(now-lastSend>=33){lastSend=now;socket.volatile.emit("engineState",makeSnapshot(this));}
+  }else if(latest&&latest.sequence>lastAppliedSequence){
+   // Apply each host snapshot once. The old code reapplied the same snapshot on every
+   // local render frame (often 60 times/sec), repeatedly rewinding Player 2's physics.
+   lastAppliedSequence=latest.sequence;
+   applySnapshot(this,latest);
+  }
  };
  C.prototype.__bsoOnlinePatched=true;
  console.info("[BSO] Typed original-game state synchronization installed. Player "+side+(side===1?" is host.":" is following host state."));
@@ -120,7 +125,12 @@ function install(){
  if(status)status.textContent=side===1?"Online match active · You are host":"Online match active · Synced to host";
  return true;
 }
-socket.on("engineState",state=>{if(side===2&&state)latest=state;});
+socket.on("engineState",state=>{
+ if(side!==2||!state||!Number.isSafeInteger(state.sequence))return;
+ if(state.sequence<=lastReceivedSequence)return;
+ lastReceivedSequence=state.sequence;
+ latest=state;
+});
 const start=Date.now();
 const timer=setInterval(()=>{
  if(install()){clearInterval(timer);return;}
