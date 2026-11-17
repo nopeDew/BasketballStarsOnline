@@ -86,6 +86,17 @@ function cleanName(value) {
 function cleanCode(value) {
   return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
 }
+function cleanSelection(value) {
+  if (!value || typeof value !== "object") return null;
+  const team = Number(value.team);
+  const player = Number(value.player);
+  if (!Number.isInteger(team) || team < 1 || team > 17 ||
+      !Number.isInteger(player) || player < 0 || player > 1) return null;
+  return { team, player };
+}
+function roomSelections(room) {
+  return room.players.slice().sort((a, b) => a.side - b.side).map(player => player.selection || null);
+}
 function validSession(value) {
   return typeof value === "string" && value.length >= 12 && value.length <= 100;
 }
@@ -118,7 +129,7 @@ function removePlayer(room, player) {
   if (!room.players.length) rooms.delete(room.code);
   else {
     room.started = false;
-    room.players.forEach(p => { p.ready = false; p.selectionReady = false; });
+    room.players.forEach(p => { p.ready = false; p.selectionReady = false; p.selection = null; });
     room.selectionStarted = false;
     updateRoom(room);
     const survivor = room.players.find(p => p.socketId);
@@ -163,7 +174,7 @@ io.on("connection", socket => {
     attachPlayer(room, player, socket);
     socket.emit("engineRoomJoined", { ...publicRoom(room), side: player.side, seed: room.seed });
     if (room.started) socket.emit("engineGameStart", { code: room.code, side: player.side, seed: room.seed });
-    if (room.selectionStarted) socket.emit("engineSelectionStart", { code: room.code });
+    if (room.selectionStarted) socket.emit("engineSelectionStart", { code: room.code, selections: roomSelections(room) });
     updateRoom(room);
     if (wasOffline) {
       const opponent = room.players.find(p => p !== player && p.socketId);
@@ -179,22 +190,34 @@ io.on("connection", socket => {
     if (room.players.every(p => p.ready && p.socketId)) {
       room.started = true;
       room.selectionStarted = false;
-      room.players.forEach(p => p.selectionReady = false);
+      room.players.forEach(p => { p.selectionReady = false; p.selection = null; });
       io.to(room.code).emit("engineGameStart", { code: room.code, seed: room.seed });
     }
     updateRoom(room);
   });
 
-  socket.on("engineSelectionReady", () => {
+  socket.on("engineCharacterSelection", payload => {
+    const room = rooms.get(socket.data.engineRoom);
+    const player = findPlayer(room, socket);
+    if (!room || !room.started || !player || room.selectionStarted) return;
+    const selection = cleanSelection(payload && payload.selection);
+    if (!selection) return;
+    player.selection = selection;
+    io.to(room.code).emit("engineCharacterSelectionUpdate", { side: player.side, selection });
+  });
+
+  socket.on("engineSelectionReady", payload => {
     const room = rooms.get(socket.data.engineRoom);
     const player = findPlayer(room, socket);
     if (!room || !room.started || !player || room.players.length !== 2 || room.selectionStarted) return;
+    const finalSelection = cleanSelection(payload && payload.selection);
+    if (finalSelection) player.selection = finalSelection;
     player.selectionReady = true;
     const readyCount = room.players.filter(p => p.selectionReady).length;
     io.to(room.code).emit("engineSelectionProgress", { ready: readyCount });
     if (readyCount === 2 && room.players.every(p => !!p.socketId)) {
       room.selectionStarted = true;
-      io.to(room.code).emit("engineSelectionStart", { code: room.code });
+      io.to(room.code).emit("engineSelectionStart", { code: room.code, selections: roomSelections(room) });
     }
     updateRoom(room);
   });
