@@ -98,6 +98,7 @@ function install(){
  if(!C||!C.prototype||C.prototype.__bsoOnlinePatched)return false;
  const original=C.prototype.update;
  C.prototype.update=function(dt){
+  window.__BSO_GAMEPLAY_ACTIVE=true;
   original.call(this,dt);
   if(!this.objects||!this.objects.length)return;
   if(side===1){
