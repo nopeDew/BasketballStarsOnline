@@ -129,7 +129,7 @@ function drawBindings(){
 }
 function addPanel(){
  const style=document.createElement("style");
- style.textContent="#bso-network{position:fixed;z-index:999999;top:12px;left:12px;width:min(360px,calc(100vw - 24px));padding:12px 14px;background:#091321ed;border:1px solid #d6a94e;border-radius:12px;color:#f7f2e8;font:12px system-ui;box-shadow:0 8px 30px #0008}#bso-network b{color:#f6c45b}#bso-network .muted{color:#b5c3d5;line-height:1.45}#bso-network button{border:0;border-radius:7px;background:#263d5a;color:white;padding:7px 9px;font-weight:800;cursor:pointer}#bso-network select{margin:5px 0;padding:6px;background:#263d5a;color:white;border:1px solid #62758c;border-radius:6px}#bso-network details{margin-top:8px}#bso-network summary{cursor:pointer;color:#f6c45b;font-weight:900}.bso-bind{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.bso-bind span{font-size:10px}.bso-bind button.listening{background:#f6c45b!important;color:#20180a!important}";
+ style.textContent="#bso-network{position:fixed;z-index:999999;top:12px;left:12px;width:min(360px,calc(100vw - 24px));padding:12px 14px;background:#091321ed;border:1px solid #d6a94e;border-radius:12px;color:#f7f2e8;font:12px system-ui;box-shadow:0 8px 30px #0008}#bso-network.bso-gameplay-hidden{display:none!important}#bso-network b{color:#f6c45b}#bso-network .muted{color:#b5c3d5;line-height:1.45}#bso-network button{border:0;border-radius:7px;background:#263d5a;color:white;padding:7px 9px;font-weight:800;cursor:pointer}#bso-network select{margin:5px 0;padding:6px;background:#263d5a;color:white;border:1px solid #62758c;border-radius:6px}#bso-network details{margin-top:8px}#bso-network summary{cursor:pointer;color:#f6c45b;font-weight:900}.bso-bind{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.bso-bind span{font-size:10px}.bso-bind button.listening{background:#f6c45b!important;color:#20180a!important}";
  document.head.append(style);
  const box=document.createElement("div");box.id="bso-network";
  box.innerHTML='<div><b>BASKETBALL STARS ONLINE</b> · PLAYER '+side+'</div><div id="bso-status" class="muted">Connecting to your opponent…</div><div class="muted">CONTROL LAYOUT</div><select id="bso-layout"><option value="wasd">WASD + B / V</option><option value="arrows">ARROW KEYS + L / K</option></select><div id="bso-controls" class="muted">'+controlsText(layout)+'</div><div id="bso-input-status" class="muted">Waiting for your first input…</div><div id="bso-p2-debug" class="muted">Player 2 controller: waiting for game loop…</div><details><summary>CUSTOMIZE YOUR CONTROLS</summary><div id="bso-bindings"></div><button id="bso-reset" type="button">RESET DEFAULTS</button></details><button id="bso-leave" type="button" style="margin-top:8px">LEAVE MATCH</button>';
@@ -145,9 +145,21 @@ function addPanel(){
  };
  drawBindings();
  document.getElementById("bso-reset").onclick=()=>{bindings={...layouts[layout]};save()};
- document.getElementById("bso-leave").onclick=()=>{socket.emit("engineLeave");location.href="/"};
+ document.getElementById("bso-leave").onclick=()=>returnToLoadingScreen("Leaving match…");
 }
 function status(message){const el=document.getElementById("bso-status");if(el)el.textContent=message}
+let returningToLoadingScreen=false;
+function returnToLoadingScreen(message){
+ if(returningToLoadingScreen)return;
+ returningToLoadingScreen=true;
+ releaseAll();
+ status(message||"Returning to the lobby…");
+ const navigate=()=>location.replace("/");
+ if(socket.connected){
+  socket.emit("engineLeave",navigate);
+  setTimeout(navigate,700);
+ }else navigate();
+}
 function getMatchData(){
  const inventory=window.__BSO_Inventory;
  return inventory&&inventory.instance&&inventory.instance.matchData||null;
@@ -248,7 +260,7 @@ socket.on("engineRemoteInput",packet=>{
  if(remotePackets===1)status("Opponent connection confirmed · Player "+remoteSide+" controls relayed");
 
 });
-socket.on("engineOpponentDisconnected",()=>{releaseAll();status("Opponent disconnected. Waiting for reconnection…")});
+socket.on("engineOpponentDisconnected",()=>returnToLoadingScreen("Opponent left. Returning to the lobby…"));
 socket.on("engineOpponentReconnected",()=>status("Opponent reconnected."));
 socket.on("engineError",message=>status(message));
 socket.on("disconnect",()=>{releaseAll();status("Connection lost. Reconnecting…")});
@@ -270,9 +282,14 @@ window.addEventListener("keyup",event=>{
  const action=actions.find(a=>bindings[a]===event.code);
  if(action){event.preventDefault();event.stopImmediatePropagation();setAction(action,false)}
 },true);
-socket.on("engineOpponentLeft",()=>{releaseAll();status("Opponent left the room.");});
+socket.on("engineOpponentLeft",()=>returnToLoadingScreen("Opponent left. Returning to the lobby…"));
 window.addEventListener("blur",releaseAll);
 window.addEventListener("beforeunload",releaseAll);
+// Keep the lobby/control settings visible during setup, then get the panel completely off the court.
+setInterval(()=>{
+ const panel=document.getElementById("bso-network");
+ if(panel&&window.__BSO_GAMEPLAY_ACTIVE)panel.classList.add("bso-gameplay-hidden");
+},100);
 setInterval(sendLocal,50);
 setInterval(()=>{
  const el=document.getElementById("bso-p2-debug");if(!el)return;
