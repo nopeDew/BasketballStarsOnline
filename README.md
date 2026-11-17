@@ -13,6 +13,8 @@ The Render install step extracts the original source archive and patches the act
 - Leaves the original character-selection screen open; each player presses **PLAY**, and the server starts the match only after both are ready.
 - Routes Player 2 inputs directly into the original `PlayerController2` update loop.
 - Leaves keyboard events available to the original selection UI until gameplay begins, then captures and relays the correct player controls.
+- Hides the online controls/status panel once the match becomes active, leaving the court unobstructed.
+- Returns the remaining player to the room/loading screen when their opponent explicitly leaves or disconnects.
 - Keeps the original two-player menu path available and allows Phaser to fall back to Canvas where WebGL is unavailable.
 
 Player 1 runs the authoritative original-game simulation and sends match snapshots to Player 2 at approximately 30 updates per second. The ball is sent only once per snapshot, and each player's original possession flag is mirrored so the clients agree on who has the ball. Both clients receive the same Player 1 and Player 2 control states, while Player 2 applies the host's state snapshots to correct simulation drift.
