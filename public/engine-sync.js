@@ -16,6 +16,7 @@ function readObject(o,index,typeIndex){
  if(g){item.x=clamp(g.x);item.y=clamp(g.y);item.r=clamp(g.rotation);item.visible=g.visible!==false;item.alpha=clamp(g.alpha);}
  const body=readBody(b);if(body)item.body=body;
  if(typeof o.state==="string")item.state=o.state;
+ if(typeof o.withBall==="boolean")item.withBall=o.withBall;
  if(typeof o.isGrounded==="boolean")item.grounded=o.isGrounded;
  if(typeof o.isHuman==="boolean")item.human=o.isHuman;
  if(typeof o.isWaiting==="boolean")item.waiting=o.isWaiting;
@@ -24,7 +25,8 @@ function readObject(o,index,typeIndex){
 }
 function makeSnapshot(core){
  const counts=Object.create(null);
- const objects=(core.objects||[]).slice(0,250).map((o,i)=>{
+ // The ball has a dedicated stable reference below. Do not serialize it a second time via core.objects.
+ const objects=(core.objects||[]).filter(o=>o!==core.ball).slice(0,250).map((o,i)=>{
   const type=Number.isFinite(o&&o.objType)?o.objType:-1;
   const typeIndex=counts[type]||0;counts[type]=typeIndex+1;
   return readObject(o,i,typeIndex);
@@ -64,6 +66,11 @@ function applyObject(o,item){
  }
  if(typeof item.grounded==="boolean")o.isGrounded=item.grounded;
  if(typeof item.waiting==="boolean")o.isWaiting=item.waiting;
+ // Preserve the original game's actual possession flag, not just the ball's visual position.
+ if(typeof item.withBall==="boolean"&&typeof o.takeBallInHands==="function"&&typeof o.freeBall==="function"&&o.withBall!==item.withBall){
+  if(item.withBall)o.takeBallInHands();
+  else o.freeBall();
+ }
 }
 function applySnapshot(core,s){
  if(!s||!Array.isArray(s.objects))return;
