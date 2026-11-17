@@ -32,7 +32,7 @@ app.get("/play", (_req, res) => {
   const network = '<script src="/socket.io/socket.io.js"></script><script src="/engine-network.js"></script>';
   const engineScript = /<script[^>]+src=["']basketball_legends_2019\.min\.js[^>]*><\/script>/i;
   if (engineScript.test(html)) {
-    html = html.replace(engineScript, (_match) => network + _match + '<script src="/engine-autostart.js"></script><script src="/engine-sync.js"></script>');
+    html = html.replace(engineScript, (_match) => network + _match + '<script src="/engine-sync.js"></script>');
   } else {
     html = html.replace("</body>", network + '<script src="/engine-sync.js"></script></body>');
   }
@@ -50,8 +50,8 @@ app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
     "BSO_ONLINE_SOURCE_PATCH",
     "window.__BSO_INSTALL_INPUT_MANAGER(r)",
     "window.__BSO_MainGameCore = n.MainGameCore",
-    "window.__BSO_MenuClass = i(32).default",
-    "window.__BSO_RandomStateClass = i(26).default",
+    "BSO_ONLINE_AUTOSTART_MENU",
+    "BSO_ONLINE_AUTOSTART_RANDOMSTATE",
     "renderer: Phaser.AUTO,"
   ];
   const missing = requiredMarkers.filter(marker => !js.includes(marker));
