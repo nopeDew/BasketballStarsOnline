@@ -10,6 +10,7 @@ const actions=["left","right","jump","down","shoot","super"];
 const defaults={left:"KeyA",right:"KeyD",jump:"KeyW",down:"KeyS",shoot:"KeyJ",super:"KeyK"};
 let bindings={...defaults};try{bindings={...bindings,...JSON.parse(localStorage.getItem("bso-legends-keys")||"{}")}}catch(e){}
 let side=Number(params.get("side")||1),remoteSide=side===1?2:1,localState={},remoteState={},capture=null,ready=false;
+window.__BSO_NET_LOCAL_SIDE=side;
 const inputs={1:{},2:{}},lastTap={1:{left:0,right:0},2:{left:0,right:0}},dashPulse={1:{left:false,right:false},2:{left:false,right:false}};
 window.__BSO_NET_INPUTS=inputs;
 window.__BSO_NET_DASH=dashPulse;
@@ -30,6 +31,37 @@ window.__BSO_CONSUME_NET_DASH=(who,direction)=>{
  const value=d.left?-1:d.right?1:0;
  d.left=false;d.right=false;
  return value;
+};
+/* Native Basketball Legends input integration. The original game bundle calls this
+   while defining its real InputManager class, before constructing its controllers. */
+window.__BSO_INSTALL_INPUT_MANAGER=InputManager=>{
+ const proto=InputManager&&InputManager.prototype;
+ if(!proto||proto.__bsoNetworkInputsInstalled)return;
+ const bindings={
+  isbtnA:[1,"left"],isbtnD:[1,"right"],isbtnW:[1,"jump"],isbtnS:[1,"down"],isbtnB:[1,"shoot"],isbtnV:[1,"super"],
+  isbtnLeft:[2,"left"],isbtnRight:[2,"right"],isbtnUp:[2,"jump"],isbtnDown:[2,"down"],isbtnL:[2,"shoot"],isbtnK:[2,"super"],
+  isbtnADouble:[1,"left","dash"],isbtnDDouble:[1,"right","dash"],
+  isbtnLeftDouble:[2,"left","dash"],isbtnRightDouble:[2,"right","dash"]
+ };
+ for(const [property,[player,action,kind]] of Object.entries(bindings)){
+  const descriptor=Object.getOwnPropertyDescriptor(proto,property);
+  if(!descriptor||typeof descriptor.get!=="function")throw new Error("Original input getter missing: "+property);
+  const nativeGetter=descriptor.get;
+  Object.defineProperty(proto,property,{
+   configurable:true,enumerable:descriptor.enumerable,
+   get:function(){
+    const remote=kind==="dash"
+      ? !!window.__BSO_CONSUME_NET_DASH(player,action)
+      : !!(window.__BSO_NET_INPUTS&&window.__BSO_NET_INPUTS[player]&&window.__BSO_NET_INPUTS[player][action]);
+    return remote||!!nativeGetter.call(this);
+   }
+  });
+ }
+ proto.__bsoNetworkInputsInstalled=true;
+ window.__BSO_INPUT_PATCHED=true;
+ console.info("[BSO] Original Basketball Legends InputManager now reads both players' network inputs.");
+ const status=document.getElementById("bso-status");
+ if(status)status.textContent="Original game input manager connected · both player slots network-enabled";
 };
 function keyLabel(code){return code==="Space"?"SPACE":code.startsWith("Key")?code.slice(3):code.replace("Arrow","").replace("Left","").toUpperCase()}
 function sendLocal(){if(socket.connected&&ready)socket.emit("engineInput",{actions:localState})}
@@ -78,7 +110,7 @@ socket.on("connect",()=>{
 socket.on("connect_error",error=>status("Server connection failed · "+(error&&error.message||"retrying")));
 
 socket.on("engineRoomJoined",r=>{
- side=r.side;remoteSide=side===1?2:1;ready=true;
+ side=r.side;remoteSide=side===1?2:1;window.__BSO_NET_LOCAL_SIDE=side;ready=true;
  window.__BSO_UPDATE_NET_INPUTS(side,localState);
  status("Room "+r.code+" connected · You control Player "+side+" · syncing opponent");
 });
