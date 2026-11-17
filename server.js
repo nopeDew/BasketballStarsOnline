@@ -21,7 +21,7 @@ app.get("/health", (_req, res) => {
   const source = sourceExists ? fs.readFileSync(sourcePath, "utf8") : "";
   const onlinePatched = source.includes("BSO_ONLINE_SOURCE_PATCH") &&
     source.includes("BSO_ONLINE_AUTOSTART_MENU") &&
-    source.includes("BSO_ONLINE_AUTOSTART_RANDOMSTATE");
+    source.includes("BSO_ONLINE_AUTOSTART_RANDOMSTATE") &&\n    source.includes("BSO_ONLINE_P2_CONTROLLER");
   res.json({ ok: true, engineReady, sourceExists, onlinePatched });
 });
 
@@ -60,7 +60,7 @@ app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
     "window.__BSO_INSTALL_INPUT_MANAGER(r)",
     "window.__BSO_MainGameCore = n.MainGameCore",
     "BSO_ONLINE_AUTOSTART_MENU",
-    "BSO_ONLINE_AUTOSTART_RANDOMSTATE",
+    "BSO_ONLINE_AUTOSTART_RANDOMSTATE",\n    "BSO_ONLINE_P2_CONTROLLER",
     "renderer: Phaser.AUTO,"
   ];
   const missing = requiredMarkers.filter(marker => !js.includes(marker));
