@@ -2,6 +2,7 @@
 "use strict";
 const params=new URLSearchParams(location.search);
 const roomCode=(params.get("room")||"").toUpperCase();
+window.__BSO_ONLINE_MATCH=!!roomCode;
 const sessionId=sessionStorage.getItem("bso-session");
 const querySeed=Number(params.get("seed")||0);
 if(querySeed){let state=querySeed>>>0;Math.random=()=>{state=(state+0x6D2B79F5)>>>0;let t=state;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296}}
