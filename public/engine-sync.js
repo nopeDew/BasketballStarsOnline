@@ -26,11 +26,12 @@ function readObject(o,index,typeIndex){
 function makeSnapshot(core){
  const counts=Object.create(null);
  // The ball has a dedicated stable reference below. Do not serialize it a second time via core.objects.
- const objects=(core.objects||[]).filter(o=>o!==core.ball).slice(0,250).map((o,i)=>{
+ const objects=(core.objects||[]).filter(o=>o!==core.ball).map((o,i)=>{
   const type=Number.isFinite(o&&o.objType)?o.objType:-1;
   const typeIndex=counts[type]||0;counts[type]=typeIndex+1;
-  return readObject(o,i,typeIndex);
- });
+  // Static decoration does not need network replication. Keep physics objects and players.
+  return o&&(o.body||o.isHuman===true||typeof o.withBall==="boolean")?readObject(o,i,typeIndex):null;
+ }).filter(Boolean).slice(0,120);
  const inv=window.__BSO_Inventory,md=inv&&inv.instance&&inv.instance.matchData;
  return {
   sequence:++snapshotSequence,
@@ -46,18 +47,28 @@ function setVec(vec,x,y){
  if(typeof vec.setxy==="function")vec.setxy(x,y);
  else {if(Number.isFinite(x))vec.x=x;if(Number.isFinite(y))vec.y=y;}
 }
-function applyObject(o,item){
+function applyObject(o,item,alpha){
  if(!o||!item)return;
  const b=o.body,g=o.graphic,p=item.body;
+ // Blend authoritative corrections into Player 2's local prediction instead of
+ // teleporting every body to a new 30 Hz snapshot.
  if(b&&p){
-  setVec(b.position,p.x,p.y);
-  setVec(b.velocity,p.vx,p.vy);
-  try{b.rotation=p.rotation;b.angularVel=p.angularVel;}catch(_){}
+  const pos=b.position,vel=b.velocity;
+  const x=pos&&Number.isFinite(pos.x)?pos.x:p.x;
+  const y=pos&&Number.isFinite(pos.y)?pos.y:p.y;
+  const vx=vel&&Number.isFinite(vel.x)?vel.x:p.vx;
+  const vy=vel&&Number.isFinite(vel.y)?vel.y:p.vy;
+  setVec(b.position,x+(p.x-x)*alpha,y+(p.y-y)*alpha);
+  setVec(b.velocity,vx+(p.vx-vx)*alpha,vy+(p.vy-vy)*alpha);
+  try{
+   b.rotation=Number.isFinite(b.rotation)?b.rotation+(p.rotation-b.rotation)*alpha:p.rotation;
+   b.angularVel=Number.isFinite(b.angularVel)?b.angularVel+(p.angularVel-b.angularVel)*alpha:p.angularVel;
+  }catch(_){}
  }
  if(g){
-  if(Number.isFinite(item.x))g.x=item.x;
-  if(Number.isFinite(item.y))g.y=item.y;
-  if(Number.isFinite(item.r))g.rotation=item.r;
+  if(Number.isFinite(item.x))g.x=Number.isFinite(g.x)?g.x+(item.x-g.x)*alpha:item.x;
+  if(Number.isFinite(item.y))g.y=Number.isFinite(g.y)?g.y+(item.y-g.y)*alpha:item.y;
+  if(Number.isFinite(item.r))g.rotation=Number.isFinite(g.rotation)?g.rotation+(item.r-g.rotation)*alpha:item.r;
   if(typeof item.visible==="boolean")g.visible=item.visible;
   if(Number.isFinite(item.alpha))g.alpha=item.alpha;
  }
@@ -74,8 +85,9 @@ function applyObject(o,item){
   else o.freeBall();
  }
 }
-function applySnapshot(core,s){
+function applySnapshot(core,s,dt,applyUi){
  if(!s||!Array.isArray(s.objects))return;
+ const alpha=1-Math.exp(-Math.max(1,Math.min(50,Number(dt)||16.67))/65);
  const byType=Object.create(null);
  for(const o of core.objects||[]){
   const type=Number.isFinite(o&&o.objType)?o.objType:-1;
@@ -84,20 +96,22 @@ function applySnapshot(core,s){
  for(const item of s.objects){
   const typed=item.type!==null&&byType[item.type]&&byType[item.type][item.typeIndex];
   const fallback=core.objects&&core.objects[item.i];
-  applyObject(typed||fallback,item);
+  applyObject(typed||fallback,item,alpha);
  }
  // The ball has its own stable reference on MainGameCore; use it even if object
  // creation order differs between the two browser simulations.
- if(core.ball&&s.ball)applyObject(core.ball,s.ball);
- core.isPlaying=!!s.playing;core.isPaused=!!s.paused;core.isScored=!!s.scored;core.isWaiting=!!s.waiting;
- core.isEnd=!!s.ended;core.isOvertime=!!s.overtime;
- if(Number.isFinite(s.matchTime))core.matchTime=s.matchTime;
- if(Number.isFinite(s.endTime))core.endTime=s.endTime;
- const inv=window.__BSO_Inventory,md=inv&&inv.instance&&inv.instance.matchData;
- if(md&&Array.isArray(s.scores)&&s.scores.length===2){
-  md.matchScore[0]=s.scores[0];md.matchScore[1]=s.scores[1];
-  if(core.infoPanel&&typeof core.infoPanel.updateScore==="function")core.infoPanel.updateScore(s.scores[0],s.scores[1]);
-  if(core.timer&&typeof core.timer.updateScore==="function"){core.timer.updateScore(1,s.scores[0]);core.timer.updateScore(-1,s.scores[1]);}
+ if(core.ball&&s.ball)applyObject(core.ball,s.ball,alpha);
+ if(applyUi){
+  core.isPlaying=!!s.playing;core.isPaused=!!s.paused;core.isScored=!!s.scored;core.isWaiting=!!s.waiting;
+  core.isEnd=!!s.ended;core.isOvertime=!!s.overtime;
+  if(Number.isFinite(s.matchTime))core.matchTime=s.matchTime;
+  if(Number.isFinite(s.endTime))core.endTime=s.endTime;
+  const inv=window.__BSO_Inventory,md=inv&&inv.instance&&inv.instance.matchData;
+  if(md&&Array.isArray(s.scores)&&s.scores.length===2){
+   md.matchScore[0]=s.scores[0];md.matchScore[1]=s.scores[1];
+   if(core.infoPanel&&typeof core.infoPanel.updateScore==="function")core.infoPanel.updateScore(s.scores[0],s.scores[1]);
+   if(core.timer&&typeof core.timer.updateScore==="function"){core.timer.updateScore(1,s.scores[0]);core.timer.updateScore(-1,s.scores[1]);}
+  }
  }
 }
 function install(){
@@ -112,11 +126,11 @@ function install(){
    const now=Date.now();
    // Volatile snapshots keep real-time state fresh instead of queueing stale frames under load.
    if(now-lastSend>=33){lastSend=now;socket.volatile.emit("engineState",makeSnapshot(this));}
-  }else if(latest&&latest.sequence>lastAppliedSequence){
-   // Apply each host snapshot once. The old code reapplied the same snapshot on every
-   // local render frame (often 60 times/sec), repeatedly rewinding Player 2's physics.
-   lastAppliedSequence=latest.sequence;
-   applySnapshot(this,latest);
+  }else if(latest){
+   const isNew=latest.sequence>lastAppliedSequence;
+   if(isNew)lastAppliedSequence=latest.sequence;
+   // Reconcile smoothly every render frame; update score/match flags only on new packets.
+   applySnapshot(this,latest,dt,isNew);
   }
  };
  C.prototype.__bsoOnlinePatched=true;
