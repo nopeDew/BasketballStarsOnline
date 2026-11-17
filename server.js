@@ -21,7 +21,7 @@ app.get("/health", (_req, res) => {
   const source = sourceExists ? fs.readFileSync(sourcePath, "utf8") : "";
   const onlinePatched = source.includes("BSO_ONLINE_SOURCE_PATCH") &&
     source.includes("BSO_ONLINE_AUTOSTART_MENU") &&
-    source.includes("BSO_ONLINE_AUTOSTART_RANDOMSTATE") &&
+    source.includes("BSO_ONLINE_SELECTION_READY") &&
     source.includes("BSO_ONLINE_P2_CONTROLLER");
   res.json({ ok: true, engineReady, sourceExists, onlinePatched });
 });
@@ -64,7 +64,7 @@ app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
     "window.__BSO_INSTALL_INPUT_MANAGER(r)",
     "window.__BSO_MainGameCore = n.MainGameCore",
     "BSO_ONLINE_AUTOSTART_MENU",
-    "BSO_ONLINE_AUTOSTART_RANDOMSTATE",
+    "BSO_ONLINE_SELECTION_READY",
     "BSO_ONLINE_P2_CONTROLLER",
     "renderer: Phaser.AUTO,"
   ];
@@ -97,7 +97,7 @@ function publicRoom(room) {
     code: room.code,
     started: room.started,
     players: room.players.map(p => ({
-      name: p.name, side: p.side, ready: p.ready, online: !!p.socketId
+      name: p.name, side: p.side, ready: p.ready, selectionReady: !!p.selectionReady, online: !!p.socketId
     }))
   };
 }
@@ -118,7 +118,8 @@ function removePlayer(room, player) {
   if (!room.players.length) rooms.delete(room.code);
   else {
     room.started = false;
-    room.players.forEach(p => p.ready = false);
+    room.players.forEach(p => { p.ready = false; p.selectionReady = false; });
+    room.selectionStarted = false;
     updateRoom(room);
     const survivor = room.players.find(p => p.socketId);
     if (survivor) io.to(survivor.socketId).emit("engineOpponentLeft");
@@ -131,8 +132,8 @@ io.on("connection", socket => {
     let code;
     do { code = makeCode(); } while (rooms.has(code));
     const room = {
-      code, started: false, seed: crypto.randomBytes(4).readUInt32BE(0),
-      players: [{ name: cleanName(name), side: 1, ready: false, sessionId, socketId: null }]
+      code, started: false, selectionStarted: false, seed: crypto.randomBytes(4).readUInt32BE(0),
+      players: [{ name: cleanName(name), side: 1, ready: false, selectionReady: false, sessionId, socketId: null }]
     };
     rooms.set(code, room);
     attachPlayer(room, room.players[0], socket);
@@ -146,7 +147,7 @@ io.on("connection", socket => {
     if (!validSession(sessionId)) return socket.emit("engineError", "Could not create a secure player session. Refresh and try again.");
     if (!room) return socket.emit("engineError", "Room not found. Check the code.");
     if (room.players.length >= 2) return socket.emit("engineError", "That room is full.");
-    const player = { name: cleanName(name), side: 2, ready: false, sessionId, socketId: null };
+    const player = { name: cleanName(name), side: 2, ready: false, selectionReady: false, sessionId, socketId: null };
     room.players.push(player);
     attachPlayer(room, player, socket);
     socket.emit("engineRoomJoined", { ...publicRoom(room), side: 2, seed: room.seed });
@@ -162,6 +163,7 @@ io.on("connection", socket => {
     attachPlayer(room, player, socket);
     socket.emit("engineRoomJoined", { ...publicRoom(room), side: player.side, seed: room.seed });
     if (room.started) socket.emit("engineGameStart", { code: room.code, side: player.side, seed: room.seed });
+    if (room.selectionStarted) socket.emit("engineSelectionStart", { code: room.code });
     updateRoom(room);
     if (wasOffline) {
       const opponent = room.players.find(p => p !== player && p.socketId);
@@ -176,7 +178,23 @@ io.on("connection", socket => {
     player.ready = true;
     if (room.players.every(p => p.ready && p.socketId)) {
       room.started = true;
+      room.selectionStarted = false;
+      room.players.forEach(p => p.selectionReady = false);
       io.to(room.code).emit("engineGameStart", { code: room.code, seed: room.seed });
+    }
+    updateRoom(room);
+  });
+
+  socket.on("engineSelectionReady", () => {
+    const room = rooms.get(socket.data.engineRoom);
+    const player = findPlayer(room, socket);
+    if (!room || !room.started || !player || room.players.length !== 2 || room.selectionStarted) return;
+    player.selectionReady = true;
+    const readyCount = room.players.filter(p => p.selectionReady).length;
+    io.to(room.code).emit("engineSelectionProgress", { ready: readyCount });
+    if (readyCount === 2 && room.players.every(p => !!p.socketId)) {
+      room.selectionStarted = true;
+      io.to(room.code).emit("engineSelectionStart", { code: room.code });
     }
     updateRoom(room);
   });
