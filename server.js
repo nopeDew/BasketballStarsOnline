@@ -14,7 +14,16 @@ const ENGINE_DIR = path.join(__dirname, "engine-source");
 const rooms = new Map();
 
 app.use(express.static(PUBLIC_DIR));
-app.get("/health", (_req, res) => res.json({ ok: true, engineReady: fs.existsSync(path.join(ENGINE_DIR, "basketball_legends_2019.min.js")) }));
+app.get("/health", (_req, res) => {
+  const engineReady = fs.existsSync(path.join(ENGINE_DIR, "basketball_legends_2019.min.js"));
+  const sourcePath = path.join(ENGINE_DIR, "basketball_legends_2019.f.js");
+  const sourceExists = fs.existsSync(sourcePath);
+  const source = sourceExists ? fs.readFileSync(sourcePath, "utf8") : "";
+  const onlinePatched = source.includes("BSO_ONLINE_SOURCE_PATCH") &&
+    source.includes("BSO_ONLINE_AUTOSTART_MENU") &&
+    source.includes("BSO_ONLINE_AUTOSTART_RANDOMSTATE");
+  res.json({ ok: true, engineReady, sourceExists, onlinePatched });
+});
 
 app.get("/play", (_req, res) => {
   const indexPath = path.join(ENGINE_DIR, "index.html");
