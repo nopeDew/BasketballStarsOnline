@@ -59,6 +59,7 @@ source = replaceUnique(
   '                this.currentAction = !!input.shoot;\n' +
   '                this.currentSuper = !!input.super;\n' +
   '                this.currentBlockOrPump = !!input.down;\n' +
+  '                window.__BSO_P2_CONTROLLER_DEBUG = {move:this.currentMove,jump:this.currentJump,shoot:this.currentAction,block:this.currentBlockOrPump,special:this.currentSuper,at:Date.now()};\n' +
   '            };\n' +
   '        }\n' +
   '    }',
