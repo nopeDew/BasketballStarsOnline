@@ -8,9 +8,13 @@ const querySeed=Number(params.get("seed")||0);
 if(querySeed){let state=querySeed>>>0;Math.random=()=>{state=(state+0x6D2B79F5)>>>0;let t=state;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296}}
 const socket=io();window.__BSO_SOCKET=socket;
 const actions=["left","right","jump","down","shoot","super"];
-const defaults={left:"KeyA",right:"KeyD",jump:"KeyW",down:"KeyS",shoot:"KeyJ",super:"KeyK"};
+let side=Number(params.get("side")||1),remoteSide=side===1?2:1;
+// Keep the original game keyboard layout for both native controller slots.
+const defaults=side===2
+ ? {left:"ArrowLeft",right:"ArrowRight",jump:"ArrowUp",down:"ArrowDown",shoot:"KeyL",super:"KeyK"}
+ : {left:"KeyA",right:"KeyD",jump:"KeyW",down:"KeyS",shoot:"KeyB",super:"KeyV"};
 let bindings={...defaults};try{bindings={...bindings,...JSON.parse(localStorage.getItem("bso-legends-keys")||"{}")}}catch(e){}
-let side=Number(params.get("side")||1),remoteSide=side===1?2:1,localState={},remoteState={},capture=null,ready=false;
+let localState={},remoteState={},capture=null,ready=false;
 window.__BSO_NET_LOCAL_SIDE=side;
 const inputs={1:{},2:{}},lastTap={1:{left:0,right:0},2:{left:0,right:0}},dashPulse={1:{left:false,right:false},2:{left:false,right:false}};
 window.__BSO_NET_INPUTS=inputs;
@@ -64,12 +68,14 @@ window.__BSO_INSTALL_INPUT_MANAGER=InputManager=>{
  const status=document.getElementById("bso-status");
  if(status)status.textContent="Original game input manager connected · both player slots network-enabled";
 };
-function keyLabel(code){return code==="Space"?"SPACE":code.startsWith("Key")?code.slice(3):code.replace("Arrow","").replace("Left","").toUpperCase()}
+function keyLabel(code){return ({ArrowLeft:"←",ArrowRight:"→",ArrowUp:"↑",ArrowDown:"↓",Space:"SPACE"})[code]||(code.startsWith("Key")?code.slice(3):String(code||"").toUpperCase())}
 function sendLocal(){if(socket.connected&&ready)socket.emit("engineInput",{actions:localState})}
 function setAction(action,down){
  if(!!localState[action]===down)return;
  localState[action]=down;
  window.__BSO_UPDATE_NET_INPUTS(side,localState);
+ const indicator=document.getElementById("bso-input-status");
+ if(indicator&&down)indicator.textContent="Input detected: "+action.toUpperCase()+" · sending as Player "+side;
  sendLocal();
 }
 function releaseAll(){
@@ -96,12 +102,14 @@ function addPanel(){
  style.textContent="#bso-network{position:fixed;z-index:999999;top:12px;left:12px;width:min(340px,calc(100vw - 24px));padding:12px 14px;background:#091321ed;border:1px solid #d6a94e;border-radius:12px;color:#f7f2e8;font:12px system-ui;box-shadow:0 8px 30px #0008}#bso-network b{color:#f6c45b}#bso-network .muted{color:#b5c3d5;line-height:1.45}#bso-network button{border:0;border-radius:7px;background:#263d5a;color:white;padding:7px 9px;font-weight:800;cursor:pointer}#bso-network details{margin-top:8px}#bso-network summary{cursor:pointer;color:#f6c45b;font-weight:900}.bso-bind{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.bso-bind span{font-size:10px}.bso-bind button.listening{background:#f6c45b!important;color:#20180a!important}";
  document.head.append(style);
  const box=document.createElement("div");box.id="bso-network";
- box.innerHTML='<div><b>BASKETBALL STARS ONLINE</b> · PLAYER '+side+'</div><div id="bso-status" class="muted">Connecting to your opponent…</div><div class="muted">Online controller mode: your device controls only its assigned player.</div><details><summary>CUSTOMIZE YOUR CONTROLS</summary><div id="bso-bindings"></div><button id="bso-reset" type="button">RESET DEFAULTS</button></details><button id="bso-leave" type="button" style="margin-top:8px">LEAVE MATCH</button>';
+ const controlText=side===2?"Controls: ← / → move · ↑ jump · ↓ block · L shoot · K special":"Controls: A / D move · W jump · S block · B shoot · V special";
+ box.innerHTML='<div><b>BASKETBALL STARS ONLINE</b> · PLAYER '+side+'</div><div id="bso-status" class="muted">Connecting to your opponent…</div><div id="bso-controls" class="muted">'+controlText+'</div><div id="bso-input-status" class="muted">Waiting for your first input…</div><details><summary>CUSTOMIZE YOUR CONTROLS</summary><div id="bso-bindings"></div><button id="bso-reset" type="button">RESET DEFAULTS</button></details><button id="bso-leave" type="button" style="margin-top:8px">LEAVE MATCH</button>';
  document.body.append(box);drawBindings();
  document.getElementById("bso-reset").onclick=()=>{bindings={...defaults};save()};
  document.getElementById("bso-leave").onclick=()=>{socket.emit("engineLeave");location.href="/"};
 }
 function status(message){const el=document.getElementById("bso-status");if(el)el.textContent=message}
+window.__BSO_SELECTION_WAITING=()=>status("Your player is selected · waiting for Player "+remoteSide+" to press PLAY");
 addPanel();
 socket.on("connect",()=>{
  if(!roomCode||!sessionId){status("Missing room session. Return to the lobby.");return}
@@ -115,7 +123,15 @@ socket.on("engineRoomJoined",r=>{
  window.__BSO_UPDATE_NET_INPUTS(side,localState);
  status("Room "+r.code+" connected · You control Player "+side+" · syncing opponent");
 });
-socket.on("engineGameStart",()=>status("Opponent connected · starting the original 1-v-1 match"));
+socket.on("engineGameStart",()=>status("Both players are in · choose your characters, then press PLAY"));
+socket.on("engineSelectionProgress",info=>{
+ if(info&&info.ready<2)status("Selection ready · waiting for the other player ("+info.ready+"/2)");
+});
+socket.on("engineSelectionStart",()=>{
+ status("Both players are ready · starting the original match");
+ if(typeof window.__BSO_SELECTION_START==="function")window.__BSO_SELECTION_START();
+ else window.__BSO_SELECTION_START_PENDING=true;
+});
 let remotePackets=0;
 
 socket.on("engineRemoteInput",packet=>{
