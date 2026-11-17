@@ -40,4 +40,4 @@ The `postinstall` command extracts `BasketballStarsUnblocked.github.io-main.zip`
 
 ## Testing status and limitation
 
-The source-patch script was run against a fresh extraction of the uploaded original game archive, and the patched game bundle and server/client JavaScript passed syntax checks. The project still needs a real two-device browser test after Render rebuilds it. The original title was designed for local play, so the browser-based state replication can still have timing or physics drift and is not yet independently verified as production-grade multiplayer.
+The latest server/client scripts and source-patch script pass JavaScript syntax checks, and the patch anchors were confirmed in the uploaded original game archive. The regenerated bundle and a real two-device browser test still need to be run after Render rebuilds the latest commit. The original title was designed for local play, so browser-based state replication can still have timing or physics drift and is not yet independently verified as production-grade multiplayer.
