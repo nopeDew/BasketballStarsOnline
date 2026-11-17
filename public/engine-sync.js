@@ -78,11 +78,13 @@ function install(){
     if(!this.objects||!this.objects.length)return;
     if(side===1){
       const now=Date.now();
-      if(this.isPlaying&&now-lastSend>=50){
+      if(now-lastSend>=33){
         lastSend=now;
         socket.emit("engineState",makeSnapshot(this));
       }
     }else if(latest){
+      // The second browser renders the host's actual match state. It does not
+      // treat its local simulation as the source of truth.
       applySnapshot(this,latest);
     }
   };
