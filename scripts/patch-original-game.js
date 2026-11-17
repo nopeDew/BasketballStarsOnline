@@ -18,7 +18,7 @@ if (source.includes(marker)) {
 }
 
 // Attach network inputs inside the original game's InputManager module.
-const inputAnchor = "    e.default = r\\n}";
+const inputAnchor = "    e.default = r\n}";
 const inputAt = source.lastIndexOf(inputAnchor);
 if (inputAt < 0) {
   throw new Error("Could not locate the original game input-manager export.");
