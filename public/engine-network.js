@@ -99,7 +99,7 @@ window.__BSO_INSTALL_INPUT_MANAGER=InputManager=>{
  if(status)status.textContent="Original game input manager connected · both player slots network-enabled";
 };
 function keyLabel(code){return ({ArrowLeft:"←",ArrowRight:"→",ArrowUp:"↑",ArrowDown:"↓",Space:"SPACE"})[code]||(code.startsWith("Key")?code.slice(3):String(code||"").toUpperCase())}
-function sendLocal(){if(socket.connected&&ready)socket.emit("engineInput",{actions:localState})}
+function sendLocal(volatile=false){if(socket.connected&&ready){const packet={actions:localState};if(volatile)socket.volatile.emit("engineInput",packet);else socket.emit("engineInput",packet)}}
 function setAction(action,down){
  if(!!localState[action]===down)return;
  localState[action]=down;
@@ -300,7 +300,8 @@ setInterval(()=>{
  const panel=document.getElementById("bso-network");
  if(panel&&window.__BSO_GAMEPLAY_ACTIVE)panel.classList.add("bso-gameplay-hidden");
 },100);
-setInterval(sendLocal,50);
+// Input changes are sent immediately; this low-rate volatile heartbeat only repairs lost key-up state.
+setInterval(()=>sendLocal(true),250);
 setInterval(()=>{
  const el=document.getElementById("bso-p2-debug");if(!el)return;
  const input=window.__BSO_NET_INPUTS&&window.__BSO_NET_INPUTS[2]||{};
