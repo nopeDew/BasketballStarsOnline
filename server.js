@@ -208,6 +208,20 @@ io.on("connection", socket => {
     io.to(room.code).emit("engineCharacterSelectionUpdate", { side: player.side, selection });
   });
 
+  socket.on("engineSelectionOpened", () => {
+    const room = rooms.get(socket.data.engineRoom);
+    const player = findPlayer(room, socket);
+    if (!room || !room.started || !player || room.players.length !== 2) return;
+    // The previous match completed its selection handshake. Reopen that handshake
+    // once when either player enters the native selector for the next game.
+    if (room.selectionStarted) {
+      room.selectionStarted = false;
+      room.players.forEach(p => { p.selectionReady = false; });
+      io.to(room.code).emit("engineSelectionProgress", { ready: 0 });
+      updateRoom(room);
+    }
+  });
+
   socket.on("engineSelectionReady", payload => {
     const room = rooms.get(socket.data.engineRoom);
     const player = findPlayer(room, socket);
