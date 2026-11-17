@@ -9,23 +9,40 @@ if(querySeed){let state=querySeed>>>0;Math.random=()=>{state=(state+0x6D2B79F5)>
 const socket=io();window.__BSO_SOCKET=socket;
 const actions=["left","right","jump","down","shoot","super"];
 let side=Number(params.get("side")||1),remoteSide=side===1?2:1;
-// Keep each original controller's own keyboard layout.
-const defaultBindings={
- 1:{left:"KeyA",right:"KeyD",jump:"KeyW",down:"KeyS",shoot:"KeyB",super:"KeyV"},
- 2:{left:"ArrowLeft",right:"ArrowRight",jump:"ArrowUp",down:"ArrowDown",shoot:"KeyL",super:"KeyK"}
+// Either player can use either original keyboard layout. Each player stores their own preference.
+const layouts={
+ wasd:{left:"KeyA",right:"KeyD",jump:"KeyW",down:"KeyS",shoot:"KeyB",super:"KeyV"},
+ arrows:{left:"ArrowLeft",right:"ArrowRight",jump:"ArrowUp",down:"ArrowDown",shoot:"KeyL",super:"KeyK"}
 };
-function defaultsFor(player){return {...(defaultBindings[player]||defaultBindings[1])}}
-function loadBindings(player){
- const defaults=defaultsFor(player);
- try{return {...defaults,...JSON.parse(localStorage.getItem("bso-legends-keys-p"+player)||"{}")}}
- catch(e){return defaults}
+function defaultLayoutFor(player){return player===1?"wasd":"arrows"}
+function layoutStorageKey(player){return "bso-legends-layout-p"+player}
+function bindingsStorageKey(player,selectedLayout){return "bso-legends-keys-p"+player+"-"+selectedLayout}
+function loadLayout(player){
+ try{const stored=localStorage.getItem(layoutStorageKey(player));if(layouts[stored])return stored}catch(e){}
+ return defaultLayoutFor(player);
 }
-function controlsText(player){
- return player===1
-  ?"Controls: A / D move · W jump · S block · B shoot · V special"
-  :"Controls: ← / → move · ↑ jump · ↓ block · L shoot · K special";
+function loadBindings(player,selectedLayout){
+ const defaults={...layouts[selectedLayout]};
+ const key=bindingsStorageKey(player,selectedLayout);
+ let stored=null;
+ try{
+  stored=localStorage.getItem(key);
+  // Migrate key customizations saved by the previous per-player controls editor.
+  if(!stored&&selectedLayout===defaultLayoutFor(player)){
+   const legacyKey="bso-legends-keys-p"+player;
+   const legacy=localStorage.getItem(legacyKey);
+   if(legacy){stored=legacy;localStorage.setItem(key,legacy);localStorage.removeItem(legacyKey);}
+  }
+  return stored?{...defaults,...JSON.parse(stored)}:defaults;
+ }catch(e){return defaults}
 }
-let bindings=loadBindings(side);
+function controlsText(selectedLayout){
+ return selectedLayout==="wasd"
+  ?"Layout: WASD · move A/D · jump W · block S · shoot B · special V"
+  :"Layout: Arrows · move ←/→ · jump ↑ · block ↓ · shoot L · special K";
+}
+let layout=loadLayout(side);
+let bindings=loadBindings(side,layout);
 let localState={},remoteState={},capture=null,ready=false;
 window.__BSO_NET_LOCAL_SIDE=side;
 const inputs={1:{},2:{}},lastTap={1:{left:0,right:0},2:{left:0,right:0}},dashPulse={1:{left:false,right:false},2:{left:false,right:false}};
@@ -98,7 +115,7 @@ function releaseAll(){
  window.__BSO_UPDATE_NET_INPUTS(remoteSide,remoteState);
  sendLocal();
 }
-function save(){localStorage.setItem("bso-legends-keys-p"+side,JSON.stringify(bindings));drawBindings()}
+function save(){localStorage.setItem(bindingsStorageKey(side,layout),JSON.stringify(bindings));drawBindings()}
 function drawBindings(){
  const root=document.getElementById("bso-bindings");if(!root)return;root.innerHTML="";
  for(const action of actions){
@@ -112,16 +129,83 @@ function drawBindings(){
 }
 function addPanel(){
  const style=document.createElement("style");
- style.textContent="#bso-network{position:fixed;z-index:999999;top:12px;left:12px;width:min(340px,calc(100vw - 24px));padding:12px 14px;background:#091321ed;border:1px solid #d6a94e;border-radius:12px;color:#f7f2e8;font:12px system-ui;box-shadow:0 8px 30px #0008}#bso-network b{color:#f6c45b}#bso-network .muted{color:#b5c3d5;line-height:1.45}#bso-network button{border:0;border-radius:7px;background:#263d5a;color:white;padding:7px 9px;font-weight:800;cursor:pointer}#bso-network details{margin-top:8px}#bso-network summary{cursor:pointer;color:#f6c45b;font-weight:900}.bso-bind{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.bso-bind span{font-size:10px}.bso-bind button.listening{background:#f6c45b!important;color:#20180a!important}";
+ style.textContent="#bso-network{position:fixed;z-index:999999;top:12px;left:12px;width:min(360px,calc(100vw - 24px));padding:12px 14px;background:#091321ed;border:1px solid #d6a94e;border-radius:12px;color:#f7f2e8;font:12px system-ui;box-shadow:0 8px 30px #0008}#bso-network b{color:#f6c45b}#bso-network .muted{color:#b5c3d5;line-height:1.45}#bso-network button{border:0;border-radius:7px;background:#263d5a;color:white;padding:7px 9px;font-weight:800;cursor:pointer}#bso-network select{margin:5px 0;padding:6px;background:#263d5a;color:white;border:1px solid #62758c;border-radius:6px}#bso-network details{margin-top:8px}#bso-network summary{cursor:pointer;color:#f6c45b;font-weight:900}.bso-bind{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.bso-bind span{font-size:10px}.bso-bind button.listening{background:#f6c45b!important;color:#20180a!important}";
  document.head.append(style);
  const box=document.createElement("div");box.id="bso-network";
- const controlText=controlsText(side);
- box.innerHTML='<div><b>BASKETBALL STARS ONLINE</b> · PLAYER '+side+'</div><div id="bso-status" class="muted">Connecting to your opponent…</div><div id="bso-controls" class="muted">'+controlText+'</div><div id="bso-input-status" class="muted">Waiting for your first input…</div><div id="bso-p2-debug" class="muted">Player 2 controller: waiting for game loop…</div><details><summary>CUSTOMIZE YOUR CONTROLS</summary><div id="bso-bindings"></div><button id="bso-reset" type="button">RESET DEFAULTS</button></details><button id="bso-leave" type="button" style="margin-top:8px">LEAVE MATCH</button>';
- document.body.append(box);drawBindings();
- document.getElementById("bso-reset").onclick=()=>{bindings=defaultsFor(side);save()};
+ box.innerHTML='<div><b>BASKETBALL STARS ONLINE</b> · PLAYER '+side+'</div><div id="bso-status" class="muted">Connecting to your opponent…</div><div class="muted">CONTROL LAYOUT</div><select id="bso-layout"><option value="wasd">WASD + B / V</option><option value="arrows">ARROW KEYS + L / K</option></select><div id="bso-controls" class="muted">'+controlsText(layout)+'</div><div id="bso-input-status" class="muted">Waiting for your first input…</div><div id="bso-p2-debug" class="muted">Player 2 controller: waiting for game loop…</div><details><summary>CUSTOMIZE YOUR CONTROLS</summary><div id="bso-bindings"></div><button id="bso-reset" type="button">RESET DEFAULTS</button></details><button id="bso-leave" type="button" style="margin-top:8px">LEAVE MATCH</button>';
+ document.body.append(box);
+ const layoutSelect=document.getElementById("bso-layout");
+ layoutSelect.value=layout;
+ layoutSelect.onchange=()=>{
+  layout=layouts[layoutSelect.value]?layoutSelect.value:defaultLayoutFor(side);
+  localStorage.setItem(layoutStorageKey(side),layout);
+  bindings=loadBindings(side,layout);
+  const controls=document.getElementById("bso-controls");if(controls)controls.textContent=controlsText(layout);
+  drawBindings();
+ };
+ drawBindings();
+ document.getElementById("bso-reset").onclick=()=>{bindings={...layouts[layout]};save()};
  document.getElementById("bso-leave").onclick=()=>{socket.emit("engineLeave");location.href="/"};
 }
 function status(message){const el=document.getElementById("bso-status");if(el)el.textContent=message}
+function getMatchData(){
+ const inventory=window.__BSO_Inventory;
+ return inventory&&inventory.instance&&inventory.instance.matchData||null;
+}
+function readCharacterSelection(index){
+ const md=getMatchData();
+ if(!md||!Array.isArray(md.teams)||!Array.isArray(md.players)||!Array.isArray(md.players[index]))return null;
+ const team=Number(md.teams[index]),player=Number(md.players[index][0]);
+ if(!Number.isInteger(team)||team<1||team>17||!Number.isInteger(player)||player<0||player>1)return null;
+ return {team,player};
+}
+function sendCharacterSelection(index){
+ if(index!==side-1||!ready||!socket.connected||window.__BSO_APPLYING_REMOTE_SELECTION)return;
+ const selection=readCharacterSelection(index);
+ if(selection)socket.emit("engineCharacterSelection",{selection});
+}
+function applyCharacterSelection(index,selection){
+ if(!selection||!Number.isInteger(Number(selection.team))||Number(selection.team)<1||Number(selection.team)>17||!Number.isInteger(Number(selection.player))||Number(selection.player)<0||Number(selection.player)>1)return;
+ const md=getMatchData();if(!md)return;
+ if(!Array.isArray(md.teams))md.teams=[];
+ if(!Array.isArray(md.players))md.players=[[],[]];
+ if(!Array.isArray(md.players[index]))md.players[index]=[0];
+ md.teams[index]=Number(selection.team);
+ md.players[index][0]=Number(selection.player);
+ const state=window.__BSO_CURRENT_SELECTION_STATE;
+ const panel=state&&(index===0?state.selectPlayer:state.selectPlayer2);
+ const previous=window.__BSO_APPLYING_REMOTE_SELECTION;
+ window.__BSO_APPLYING_REMOTE_SELECTION=true;
+ try{
+  if(panel){
+   panel.emblem=Number(selection.team);
+   if(typeof panel.updateEmblems==="function")panel.updateEmblems();
+   if(typeof panel.setSuperHint==="function")panel.setSuperHint();
+   if(typeof panel.showPlayers==="function")panel.showPlayers();
+  }
+ }catch(error){console.warn("[BSO] Could not refresh remote character preview",error)}
+ finally{window.__BSO_APPLYING_REMOTE_SELECTION=!!previous}
+}
+function applyCharacterSelections(selections){
+ if(!Array.isArray(selections))return;
+ for(let index=0;index<2;index++)if(selections[index])applyCharacterSelection(index,selections[index]);
+}
+window.__BSO_APPLY_CHARACTER_SELECTIONS=applyCharacterSelections;
+window.__BSO_INSTALL_SELECT_PLAYER=SelectPlayer=>{
+ const proto=SelectPlayer&&SelectPlayer.prototype;
+ if(!proto||proto.__bsoCharacterSyncInstalled)return;
+ for(const method of ["onArmature1Click","onArmature2Click","updateClub"]){
+  const original=proto[method];if(typeof original!=="function")continue;
+  const wrapped=function(){
+   const result=original.apply(this,arguments);
+   if(window.__BSO_ONLINE_MATCH&&!window.__BSO_APPLYING_REMOTE_SELECTION)sendCharacterSelection(this.id);
+   return result;
+  };
+  wrapped.__bsoOriginal=original;proto[method]=wrapped;
+ }
+ proto.__bsoCharacterSyncInstalled=true;
+ console.info("[BSO] Native character selector is connected to online selection sync.");
+};
 window.__BSO_SELECTION_WAITING=()=>status("Your player is selected · waiting for Player "+remoteSide+" to press PLAY");
 addPanel();
 socket.on("connect",()=>{
@@ -132,10 +216,11 @@ socket.on("connect",()=>{
 socket.on("connect_error",error=>status("Server connection failed · "+(error&&error.message||"retrying")));
 
 socket.on("engineRoomJoined",r=>{
- const joinedSide=Number(r.side);
- if(joinedSide!==side){side=joinedSide;bindings=loadBindings(side);drawBindings()}
- side=joinedSide;remoteSide=side===1?2:1;window.__BSO_NET_LOCAL_SIDE=side;ready=true;
- const controls=document.getElementById("bso-controls");if(controls)controls.textContent=controlsText(side);
+ side=Number(r.side);remoteSide=side===1?2:1;window.__BSO_NET_LOCAL_SIDE=side;ready=true;
+ layout=loadLayout(side);bindings=loadBindings(side,layout);
+ const layoutSelect=document.getElementById("bso-layout");if(layoutSelect)layoutSelect.value=layout;
+ const controls=document.getElementById("bso-controls");if(controls)controls.textContent=controlsText(layout);
+ drawBindings();
  window.__BSO_UPDATE_NET_INPUTS(side,localState);
  status("Room "+r.code+" connected · You control Player "+side+" · syncing opponent");
 });
@@ -143,7 +228,12 @@ socket.on("engineGameStart",()=>status("Both players are in · choose your chara
 socket.on("engineSelectionProgress",info=>{
  if(info&&info.ready<2)status("Selection ready · waiting for the other player ("+info.ready+"/2)");
 });
-socket.on("engineSelectionStart",()=>{
+socket.on("engineCharacterSelectionUpdate",packet=>{
+ if(!packet||Number(packet.side)===side)return;
+ applyCharacterSelection(Number(packet.side)-1,packet.selection);
+});
+socket.on("engineSelectionStart",info=>{
+ if(info&&Array.isArray(info.selections))applyCharacterSelections(info.selections);
  status("Both players are ready · starting the original match");
  if(typeof window.__BSO_SELECTION_START==="function")window.__BSO_SELECTION_START();
  else window.__BSO_SELECTION_START_PENDING=true;
