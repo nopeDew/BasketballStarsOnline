@@ -114,6 +114,10 @@ const randomReplacement =
   '                    };\n' +
   '                    if (window.__BSO_SOCKET) window.__BSO_SOCKET.emit("engineSelectionReady");\n' +
   '                    if (typeof window.__BSO_SELECTION_WAITING === "function") window.__BSO_SELECTION_WAITING();\n' +
+  '                    if (window.__BSO_SELECTION_START_PENDING && typeof window.__BSO_SELECTION_START === "function") {\n' +
+  '                        window.__BSO_SELECTION_START_PENDING = !1;\n' +
+  '                        window.__BSO_SELECTION_START();\n' +
+  '                    }\n' +
   '                };\n' +
   '            }\n' +
   '            return bsoOriginalRandomCreate.apply(this, arguments);\n' +
