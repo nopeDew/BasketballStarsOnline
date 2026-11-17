@@ -18,7 +18,7 @@ app.get("/health", (_req, res) => res.json({ ok: true, engineReady: fs.existsSyn
 
 app.get("/play", (_req, res) => {
   const indexPath = path.join(ENGINE_DIR, "index.html");
-  if (!fs.existsSync(indexPath)) return res.status(503).send("The original Basketball Legends 2019 game files have not been downloaded. Check the Render install logs for the engine clone step.");
+  if (!fs.existsSync(indexPath)) return res.status(503).send("The original Basketball Legends 2019 game files have not been downloaded. Check the Render build logs for the source extraction and patch step.");
   let html = fs.readFileSync(indexPath, "utf8");
   // Remove the mirror's redirect to its hosted one-player page; run the bundled engine locally.
   html = html.replace('window.location="https://ubg98.github.io/BasketballStars/";', "");
@@ -32,7 +32,7 @@ app.get("/play", (_req, res) => {
   const network = '<script src="/socket.io/socket.io.js"></script><script src="/engine-network.js"></script>';
   const engineScript = /<script[^>]+src=["']basketball_legends_2019\.min\.js[^>]*><\/script>/i;
   if (engineScript.test(html)) {
-    html = html.replace(engineScript, (_match) => network + _match + '<script src="/engine-autostart.js"></script><script src="/engine-controller-sync.js"></script><script src="/engine-sync.js"></script>');
+    html = html.replace(engineScript, (_match) => network + _match + '<script src="/engine-autostart.js"></script><script src="/engine-sync.js"></script>');
   } else {
     html = html.replace("</body>", network + '<script src="/engine-sync.js"></script></body>');
   }
@@ -43,18 +43,24 @@ app.get("/play", (_req, res) => {
 app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
   const gamePath = path.join(ENGINE_DIR, "basketball_legends_2019.f.js");
   if (!fs.existsSync(gamePath)) return res.sendStatus(404);
-  let js = fs.readFileSync(gamePath, "utf8");
-  // Keep the original local 2-player menu option visible in this browser build.
-  js = js.replace("this.playBtn2.visible = !1,", "");
-  // Prefer Phaser.AUTO so browsers without working WebGL can fall back to Canvas.
-  js = js.replace("renderer: Phaser.WEBGL,", "renderer: Phaser.AUTO,");
-  // Expose the original game's own match core so the online sync layer can mirror
-  // authoritative match state without replacing its graphics, physics, or animations.
-  // These are the real export statements in the uploaded Basketball Legends bundle.
-  // Expose the classes from the game's webpack module so engine-sync.js can patch them.
-  js = js.replace("e.PlayerController2 = T.PlayerController2;", "e.PlayerController2 = T.PlayerController2; window.__BSO_MainGameCore = n.MainGameCore; window.__BSO_Inventory = g.Inventory; window.__BSO_PlayerController = P.PlayerController; window.__BSO_PlayerController2 = T.PlayerController2; window.__BSO_InputManagerClass = i(14).default; window.__BSO_MenuClass = i(32).default; window.__BSO_RandomStateClass = i(26).default;");
-  if (!js.includes("renderer: Phaser.AUTO,")) return res.status(500).send("Could not apply the WebGL fallback patch to the original game.");
-  if (!js.includes("e.PlayerController2 = T.PlayerController2; window.__BSO_MainGameCore = n.MainGameCore") || !js.includes("window.__BSO_PlayerController = P.PlayerController") || !js.includes("window.__BSO_PlayerController2 = T.PlayerController2") || !js.includes("window.__BSO_InputManagerClass = i(14).default") || !js.includes("window.__BSO_MenuClass = i(32).default") || !js.includes("window.__BSO_RandomStateClass = i(26).default")) return res.status(500).send("Online sync could not find the original game's controller exports. Check the bundled engine version.");
+  const js = fs.readFileSync(gamePath, "utf8");
+  // The postinstall patch modifies the actual original game bundle before the server starts.
+  // Do not silently serve a disconnected stock game if that patch did not run.
+  const requiredMarkers = [
+    "BSO_ONLINE_SOURCE_PATCH",
+    "window.__BSO_INSTALL_INPUT_MANAGER(r)",
+    "window.__BSO_MainGameCore = n.MainGameCore",
+    "window.__BSO_MenuClass = i(32).default",
+    "window.__BSO_RandomStateClass = i(26).default",
+    "renderer: Phaser.AUTO,"
+  ];
+  const missing = requiredMarkers.filter(marker => !js.includes(marker));
+  if (missing.length) {
+    return res.status(500).type("text").send(
+      "The original game source was not patched during install. Missing: " + missing.join(", ") +
+      ". Check Render build logs and redeploy."
+    );
+  }
   res.type("application/javascript").send(js);
 });
 
