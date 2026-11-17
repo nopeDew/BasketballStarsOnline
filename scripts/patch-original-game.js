@@ -36,7 +36,7 @@ source = source.slice(0, inputAt) + source.slice(inputAt).replace(inputAnchor,
   '}'
 );
 
-// Export the actual original match core and native controllers for the state-stream hook.
+// Export the original match core and patch the real Player 2 controller to consume side-2 inputs.
 source = replaceUnique(
   source,
   '    e.PlayerController2 = T.PlayerController2;',
@@ -47,12 +47,14 @@ source = replaceUnique(
   '        window.__BSO_PlayerController = P.PlayerController;\n' +
   '        window.__BSO_PlayerController2 = T.PlayerController2;\n' +
   '        /* BSO_ONLINE_P2_CONTROLLER */\n' +
-'        if (T.PlayerController2 && T.PlayerController2.prototype) {\n' +
+  '        if (T.PlayerController2 && T.PlayerController2.prototype) {\n' +
   '            var bsoNativeP2Update = T.PlayerController2.prototype.update;\n' +
   '            T.PlayerController2.prototype.update = function() {\n' +
-  '                bsoNativeP2Update.apply(this, arguments);\n' +
-  '                var input = window.__BSO_NET_INPUTS && window.__BSO_NET_INPUTS[2] || {};\n' +
+  '                var inputs = window.__BSO_NET_INPUTS;\n' +
+  '                if (!inputs || !inputs[2]) return bsoNativeP2Update.apply(this, arguments);\n' +
+  '                var input = inputs[2];\n' +
   '                this.currentMove = (input.right ? 1 : 0) - (input.left ? 1 : 0);\n' +
+  '                this.currentDash = window.__BSO_CONSUME_NET_DASH ? window.__BSO_CONSUME_NET_DASH(2) : 0;\n' +
   '                this.currentJump = !!input.jump;\n' +
   '                this.currentAction = !!input.shoot;\n' +
   '                this.currentSuper = !!input.super;\n' +
@@ -88,26 +90,33 @@ const menuReplacement =
   '    e.default = _';
 source = replaceUnique(source, menuAnchor, menuReplacement, 'original two-player title menu');
 
-// The original 2-player selection screen's PLAY action transitions straight to gameplay.
+// Keep the original player-selection screen open until BOTH online players press PLAY.
 const randomAnchor = '    e.Name = "randomstate",\n        e\n    }(Phaser.State);\n    e.default = _';
 const randomReplacement =
   '    e.Name = "randomstate",\n' +
   '        e\n' +
   '    }(Phaser.State);\n' +
-  '    /* BSO_ONLINE_AUTOSTART_RANDOMSTATE */\n' +
+  '    /* BSO_ONLINE_SELECTION_READY */\n' +
   '    if (typeof window !== "undefined") {\n' +
   '        var bsoOriginalRandomCreate = _.prototype.create;\n' +
   '        _.prototype.create = function() {\n' +
-  '            var result = bsoOriginalRandomCreate.apply(this, arguments);\n' +
-  '            if (window.__BSO_ONLINE_MATCH && !this.__bsoOnlinePlayScheduled) {\n' +
-  '                this.__bsoOnlinePlayScheduled = !0;\n' +
-  '                var state = this;\n' +
-  '                setTimeout(function() {\n' +
-  '                    var current = state.game && state.game.state && state.game.state.current;\n' +
-  '                    if ((!current || current === state.name) && typeof state.onPlay === "function") state.onPlay();\n' +
-  '                }, 1100);\n' +
+  '            var state = this;\n' +
+  '            if (window.__BSO_ONLINE_MATCH && !state.__bsoOnlinePlayWrapped && typeof state.onPlay === "function") {\n' +
+  '                state.__bsoOnlinePlayWrapped = !0;\n' +
+  '                var originalPlay = state.onPlay;\n' +
+  '                state.onPlay = function() {\n' +
+  '                    if (state.__bsoSelectionReady) return;\n' +
+  '                    state.__bsoSelectionReady = !0;\n' +
+  '                    window.__BSO_SELECTION_START = function() {\n' +
+  '                        if (state.__bsoOriginalPlayInvoked) return;\n' +
+  '                        state.__bsoOriginalPlayInvoked = !0;\n' +
+  '                        return originalPlay.apply(state, arguments);\n' +
+  '                    };\n' +
+  '                    if (window.__BSO_SOCKET) window.__BSO_SOCKET.emit("engineSelectionReady");\n' +
+  '                    if (typeof window.__BSO_SELECTION_WAITING === "function") window.__BSO_SELECTION_WAITING();\n' +
+  '                };\n' +
   '            }\n' +
-  '            return result;\n' +
+  '            return bsoOriginalRandomCreate.apply(this, arguments);\n' +
   '        };\n' +
   '    }\n' +
   '    e.default = _';
