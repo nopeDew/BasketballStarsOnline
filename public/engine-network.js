@@ -12,7 +12,7 @@ let side=Number(params.get("side")||1),remoteSide=side===1?2:1;
 // Keep the original game keyboard layout for both native controller slots.
 const defaults=side===2
  ? {left:"ArrowLeft",right:"ArrowRight",jump:"ArrowUp",down:"ArrowDown",shoot:"KeyL",super:"KeyK"}
- : {left:"KeyA",right:"KeyD",jump:"KeyW",down:"KeyS",shoot:"KeyB",super:"KeyV"};
+ : {left:"KeyA",right:"KeyD",jump:"KeyW",down:"KeyS",shoot:"KeyJ",super:"KeyK"};
 let bindings={...defaults};try{bindings={...bindings,...JSON.parse(localStorage.getItem("bso-legends-keys")||"{}")}}catch(e){}
 let localState={},remoteState={},capture=null,ready=false;
 window.__BSO_NET_LOCAL_SIDE=side;
@@ -102,7 +102,7 @@ function addPanel(){
  style.textContent="#bso-network{position:fixed;z-index:999999;top:12px;left:12px;width:min(340px,calc(100vw - 24px));padding:12px 14px;background:#091321ed;border:1px solid #d6a94e;border-radius:12px;color:#f7f2e8;font:12px system-ui;box-shadow:0 8px 30px #0008}#bso-network b{color:#f6c45b}#bso-network .muted{color:#b5c3d5;line-height:1.45}#bso-network button{border:0;border-radius:7px;background:#263d5a;color:white;padding:7px 9px;font-weight:800;cursor:pointer}#bso-network details{margin-top:8px}#bso-network summary{cursor:pointer;color:#f6c45b;font-weight:900}.bso-bind{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.bso-bind span{font-size:10px}.bso-bind button.listening{background:#f6c45b!important;color:#20180a!important}";
  document.head.append(style);
  const box=document.createElement("div");box.id="bso-network";
- const controlText=side===2?"Controls: ← / → move · ↑ jump · ↓ block · L shoot · K special":"Controls: A / D move · W jump · S block · B shoot · V special";
+ const controlText=side===2?"Controls: ← / → move · ↑ jump · ↓ block · L shoot · K special":"Controls: A / D move · W jump · S block · J shoot · K special";
  box.innerHTML='<div><b>BASKETBALL STARS ONLINE</b> · PLAYER '+side+'</div><div id="bso-status" class="muted">Connecting to your opponent…</div><div id="bso-controls" class="muted">'+controlText+'</div><div id="bso-input-status" class="muted">Waiting for your first input…</div><details><summary>CUSTOMIZE YOUR CONTROLS</summary><div id="bso-bindings"></div><button id="bso-reset" type="button">RESET DEFAULTS</button></details><button id="bso-leave" type="button" style="margin-top:8px">LEAVE MATCH</button>';
  document.body.append(box);drawBindings();
  document.getElementById("bso-reset").onclick=()=>{bindings={...defaults};save()};
