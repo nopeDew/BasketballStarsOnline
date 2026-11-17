@@ -22,6 +22,7 @@ app.get("/health", (_req, res) => {
   const onlinePatched = source.includes("BSO_ONLINE_SOURCE_PATCH") &&
     source.includes("BSO_ONLINE_AUTOSTART_MENU") &&
     source.includes("BSO_ONLINE_SELECTION_READY") &&
+    source.includes("BSO_ONLINE_REMATCH_READY") &&
     source.includes("BSO_ONLINE_P2_CONTROLLER") &&
     source.includes("BSO_ONLINE_SELECT_PLAYER_SYNC");
   res.json({ ok: true, engineReady, sourceExists, onlinePatched });
@@ -66,6 +67,7 @@ app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
     "window.__BSO_MainGameCore = n.MainGameCore",
     "BSO_ONLINE_AUTOSTART_MENU",
     "BSO_ONLINE_SELECTION_READY",
+    "BSO_ONLINE_REMATCH_READY",
     "BSO_ONLINE_P2_CONTROLLER",
     "BSO_ONLINE_SELECT_PLAYER_SYNC",
     "renderer: Phaser.AUTO,"
@@ -258,7 +260,8 @@ io.on("connection", socket => {
     if (!room || !room.started || !player || player.side !== 1 || !state || !Array.isArray(state.objects)) return;
     if (state.objects.length > 250) return;
     const opponent = room.players.find(p => p.side === 2 && p.socketId);
-    if (opponent) io.to(opponent.socketId).emit("engineState", state);
+    // Drop obsolete state under network pressure instead of building a queue behind live gameplay.
+    if (opponent) io.to(opponent.socketId).volatile.emit("engineState", state);
   });
 
   socket.on("engineLeave", acknowledge => {
