@@ -87,10 +87,11 @@ const menuReplacement =
   '        var bsoOriginalMenuCreate = _.prototype.create;\n' +
   '        _.prototype.create = function() {\n' +
   '            var result = bsoOriginalMenuCreate.apply(this, arguments);\n' +
-  '            if (window.__BSO_ONLINE_MATCH && !this.__bsoOnlineMenuScheduled) {\n' +
-  '                this.__bsoOnlineMenuScheduled = !0;\n' +
+  '            if (window.__BSO_ONLINE_MATCH) {\n' +
   '                var state = this;\n' +
+  '                var createToken = state.__bsoOnlineMenuCreateToken = (state.__bsoOnlineMenuCreateToken || 0) + 1;\n' +
   '                setTimeout(function() {\n' +
+  '                    if (state.__bsoOnlineMenuCreateToken !== createToken) return;\n' +
   '                    var current = state.game && state.game.state && state.game.state.current;\n' +
   '                    if ((!current || current === state.name) && typeof state.start2Player === "function") state.start2Player();\n' +
   '                }, 900);\n' +
@@ -112,6 +113,14 @@ const randomReplacement =
   '        var bsoOriginalRandomCreate = _.prototype.create;\n' +
   '        _.prototype.create = function() {\n' +
   '            var state = this;\n' +
+  '            if (window.__BSO_ONLINE_MATCH) {\n' +
+  '                state.__bsoSelectionReady = !1;\n' +
+  '                state.__bsoOriginalPlayInvoked = !1;\n' +
+  '                window.__BSO_SELECTION_START = null;\n' +
+  '                window.__BSO_SELECTION_START_PENDING = !1;\n' +
+  '                if (typeof window.__BSO_NOTIFY_SELECTION_OPENED === "function") window.__BSO_NOTIFY_SELECTION_OPENED();\n' +
+  '                else window.__BSO_SELECTION_OPEN_PENDING = !0;\n' +
+  '            }\n' +
   '            if (window.__BSO_ONLINE_MATCH && !state.__bsoOnlinePlayWrapped && typeof state.onPlay === "function") {\n' +
   '                state.__bsoOnlinePlayWrapped = !0;\n' +
   '                var originalPlay = state.onPlay;\n' +
