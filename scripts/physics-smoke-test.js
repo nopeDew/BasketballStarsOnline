@@ -41,4 +41,24 @@ assert.equal(match.scoreEvent.basketSide, -1, 'The left basket reports its origi
 assert.equal(match.scoreEvent.points, 2, 'A normal server-validated shot awards two points.');
 assert.equal(match.scores[1], 2, 'The authoritative score array updates on the server.');
 
-console.log('[BSO] Nape physics smoke test passed: world creation, player proxies, basket sensors, scoring.');
+// A steal request uses the original directional 55px window and only requires
+// the ball-holder to be grounded. The attacking player may be airborne because
+// the original controller starts the steal animation before the server resolves it.
+const stealMatch = new AuthoritativeMatch(napePath, 0xB51);
+const holder = stealMatch.ensurePlayer(1, 0);
+stealMatch.setPlayerMovement(1, {
+  playerNo: 0, gameSide: 1, x: 370, y: 385, vx: 0, vy: 0, grounded: true,
+  canTakeInHands: true, canDoAction: true, blockShape: false, blockBody: false, facing: -1
+});
+stealMatch.setPlayerMovement(2, {
+  playerNo: 0, gameSide: -1, x: 400, y: 385, vx: 0, vy: 0, grounded: false,
+  canTakeInHands: true, canDoAction: false, blockShape: false, blockBody: false, facing: -1
+});
+assert.equal(stealMatch.takeBall(holder), true, 'The server can assign initial possession.');
+assert.equal(stealMatch.steal(2, { playerNo: 0, attackX: 400, direction: -1 }), true,
+  'A valid directional steal succeeds even when the attacker is airborne.');
+assert.equal(stealMatch.ballState, 'steal', 'A successful steal releases the server-owned ball.');
+assert.equal(holder.state, 'stun', 'The server applies the stolen player stun state.');
+assert.equal(holder.canTakeInHands, false, 'A stunned ball-holder cannot immediately pick the ball up again.');
+
+console.log('[BSO] Nape physics smoke test passed: world creation, player proxies, basket scoring and server steal resolution.');
