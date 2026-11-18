@@ -9,7 +9,7 @@ let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastApplied
 let ownerTrackingInstalled=false;
 const snapshotBuffer=[];
 const INTERPOLATION_DELAY_MS=25;
-const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
+const diag={fps:0,phaserFps:0,desiredFps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
@@ -43,6 +43,8 @@ function startDiagnostics(){
    hud.textContent=[
     "BSO SYNC DIAGNOSTICS · P"+side,
     "Render FPS: "+diag.fps,
+    "Phaser measured FPS: "+diag.phaserFps,
+    "Phaser target FPS: "+diag.desiredFps,
     "Renderer: "+diag.renderer,
     "Render interpolation: "+diag.renderHook+" · "+diag.interpolationDelayMs+" ms buffer",
     "Game updates/sec: "+diag.gameUps,
@@ -314,6 +316,8 @@ function installGameplayRenderer(){
   if(core)renderInterpolatedSnapshot(core,performance.now());
   const renderer=this.game&&this.game.renderer;
   diag.renderer=renderer&&renderer.constructor?renderer.constructor.name:"unknown";
+  diag.phaserFps=this.game&&this.game.time?this.game.time.fps:0;
+  diag.desiredFps=this.game&&this.game.time?this.game.time.desiredFps:0;
   return result;
  };
  G.prototype.__bsoPresentationRenderInstalled=true;
