@@ -39,6 +39,7 @@ class AuthoritativeMatch {
     this.blockIsHuman = true;
     this.restartTicks = 0;
     this.restartSide = 0;
+    this.netBodies = [];
     this.createWorld();
   }
 
@@ -178,6 +179,7 @@ class AuthoritativeMatch {
     addDistance(bodies[2], bodies[4], d, u, 14);
     addDistance(bodies[1], bodies[5], p, f, 13);
     addDistance(bodies[5], bodies[3], f, g, 13);
+    this.netBodies.push(...bodies);
   }
 
   createBall(B, BT, C) {
@@ -386,11 +388,15 @@ class AuthoritativeMatch {
     if (!this.ballHolder || this.ballHolder.socketSide === socketSide) return false;
     const holder = this.players.get(this.ballHolder.socketSide + ':' + this.ballHolder.playerNo);
     if (!holder || !holder.grounded) return false;
-    const low = thief.facing === 1 ? thief.x : thief.x - 55;
-    const high = thief.facing === 1 ? thief.x + 55 : thief.x;
+    const attackX = clamp(finite(a.attackX, thief.x), -50, WIDTH + 50);
+    const attackDirection = finite(a.direction, thief.facing) === 1 ? 1 : -1;
+    // Original PlayerObject.checkToBeStolen(): test the 55px interval in the
+    // attacker's graphic-facing direction, using the attack frame's x-position.
+    const low = attackDirection === 1 ? attackX : attackX - 55;
+    const high = attackDirection === 1 ? attackX + 55 : attackX;
     if (holder.x < low || holder.x > high) return false;
-    const ratio = clamp(Math.abs(holder.x - thief.x) / 55, 0, 1);
-    const direction = holder.x > thief.x ? 1 : -1;
+    const ratio = clamp(Math.abs(holder.x - attackX) / 55, 0, 1);
+    const direction = holder.x > attackX ? 1 : -1;
     this.ballSide = holder.gameSide;
     holder.canTakeInHands=false;
     holder.canAct=false;
@@ -518,6 +524,14 @@ class AuthoritativeMatch {
       this.restartSide = 0;
     }
     if (this.ballState !== 'inHands' && this.ballState !== 'score' && this.ballBody.space) this.space.step(dt);
+    // BasketObject.update() damps each linked net segment every frame in the
+    // original client engine; keep the same damping in this server world.
+    const netDamping = Math.pow(0.2, dt);
+    for (const body of this.netBodies) {
+      if (body.space !== this.space) continue;
+      body.velocity.muleq(netDamping);
+      body.angularVel *= netDamping;
+    }
     this.sequence++;
     return this.snapshot();
   }
