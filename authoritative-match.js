@@ -67,7 +67,7 @@ class AuthoritativeMatch {
       player: new F(273, 4096, 4096)
     };
     this.cb = {
-      ball: new CB(), ground: new CB(), border: new CB(), basket: new CB(),
+      ball: new CB(), player: new CB(), ground: new CB(), border: new CB(), basket: new CB(),
       ring: new CB(), hands: new CB(), block: new CB(), upper: new CB(), down: new CB()
     };
     this.space = new N.space.Space(V.weak(0, 450));
