@@ -62,8 +62,8 @@ function startDiagnostics(){
     "Sequence gaps: "+diag.sequenceGaps,
     "Last sequence: "+diag.lastSequence,
     "Remote input packets: "+remote,
-    "P2 controls: "+(side===2?"relayed to host":(controller?"active":"not reporting")),
-    "P2 simulation: "+(side===2?"host-authoritative":"local host"),
+    "P2 controls: "+(side===2?"local prediction + host correction":(controller?"active":"not reporting")),
+    "P2 simulation: "+(side===2?"local sim · host corrects opponent/ball":"authoritative host sim"),
     "Host ball state: "+(diag.hostBallState||"unknown"),
     "Host ball holder: "+(diag.hostHolder||"none"),
     "Local ball holders: "+(diag.localHolders||"none"),
@@ -233,7 +233,7 @@ function applyBall(core,item,alpha,players){
  diag.localHolders=(players||[]).filter(player=>player.withBall).map(player=>"side "+player.SIDE+" / player "+player.playerNo).join(", ")||"none";
  // Player 2 never simulates the ball locally. Keep its body out of both Nape spaces
  // while continuing to render the authoritative host position and velocity.
- if(side===2&&b.space!==null)b.space=null;
+ // Keep the ball in local physics; host snapshots reconcile its authoritative state.
  applyObject(ball,item,1,null);
 }
 function isLocallyControlledP2(player){
@@ -312,7 +312,9 @@ function renderInterpolatedSnapshot(core,now){
   };
  };
  const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
+ const localP2=side===2?players.find(isLocallyControlledP2):null;
  for(const player of players){
+  if(localP2&&player===localP2)continue;
   const graphic=player&&player.graphic;
   if(!graphic)continue;
   const key=player.SIDE+":"+player.playerNo;
@@ -368,7 +370,7 @@ function installGameplayRenderer(){
  };
  G.prototype.__bsoPresentationRenderInstalled=true;
  diag.renderHook="active · preRender";
- console.info("[BSO] Player 2 interpolation now runs before every Phaser render.");
+ console.info("[BSO] Player 2 predicts its own avatar locally; host corrects opponent and ball.");
  return true;
 }
 function applySnapshot(core,s,dt,applyUi){
@@ -387,10 +389,10 @@ function applySnapshot(core,s,dt,applyUi){
  for(const item of s.objects){
   const player=Number.isFinite(item.playerNo)&&Number.isFinite(item.side)?localPlayers.find(p=>p&&p.playerNo===item.playerNo&&p.SIDE===item.side):null;
   if(!player)continue;
-  // Both players are display-only on P2; their positions and actions come from P1.
+  // P2 predicts its own avatar immediately; only correct the remote opponent.
+  if(side===2&&player===localP2)continue;
   applyObject(player,item,alpha,null);
  }
- lockPresentationClient(core);
  if(applyUi){
   core.isPlaying=!!s.playing;core.isPaused=!!s.paused;core.isScored=!!s.scored;core.isWaiting=!!s.waiting;
   core.isEnd=!!s.ended;core.isOvertime=!!s.overtime;core.isSuperShot=!!s.superShot;core.isAlleyOop=!!s.alleyOop;
@@ -414,28 +416,17 @@ function install(){
  const original=C.prototype.update;
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
-  if(side===2){
-   installBallOwnerTracking(this);
-   lockPresentationClient(this);
-  }else installBallOwnerTracking(this);
+  installBallOwnerTracking(this);
   const coreStart=performance.now();
-  // P2 is not a second game simulation. It receives the host's match state,
-  // so running the full Nape/object update loop here only wastes CPU and causes
-  // the rendering client to diverge again.
-  if(side===1)original.call(this,dt);
+  // Both browsers run the original 40 Hz simulation. Player 2's own controller
+  // is therefore applied locally instead of waiting for a host round-trip.
+  original.call(this,dt);
   const coreEnd=performance.now();
-  if(side===2)lockPresentationClient(this);
-  if(!this.objects||!this.objects.length)return;
-  if(side===1){
-   // MainGameCore.update runs inside the original 25 ms fixed-step accumulator.
-   // Reliable delivery matters here: dropping snapshots creates visible pauses on P2.
-   // The 40 Hz stream is small, so send every authoritative simulation step.
-   socket.emit("engineState",makeSnapshot(this));
-   snapshotSentCount++;
-  }else if(latest){
+  if(side===2&&latest){
    const isNew=latest.sequence>lastAppliedSequence;
    if(isNew)lastAppliedSequence=latest.sequence;
-   // Reconcile smoothly every simulation tick; update score/match flags only on new packets.
+   // Keep the host authoritative for the opponent and ball, while preserving
+   // the locally predicted Player 2 avatar.
    applySnapshot(this,latest,dt,isNew);
   }
   const syncEnd=performance.now();
