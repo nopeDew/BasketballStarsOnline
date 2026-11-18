@@ -291,11 +291,12 @@ function installServerBallAuthority(core){
  proto.__bsoServerBallAuthorityInstalled=true;
  const C=window.__BSO_MainGameCore;
  if(C&&C.prototype&&typeof C.prototype.steal==="function"&&!C.prototype.__bsoServerStealRelayInstalled){
-  const nativeSteal=C.prototype.steal;
   C.prototype.steal=function(gameSide,attackX,direction,fromInput){
    const p=localPlayer();
    if(p&&isLocalSide(gameSide))send({type:"steal",playerNo:p.playerNo,attackX,direction});
-   return nativeSteal.apply(this,arguments);
+   // Do not run client-side steal range/possession checks. The server Nape
+   // player/ball proxies alone decide whether the steal actually connects.
+   return false;
   };
   C.prototype.__bsoServerStealRelayInstalled=true;
  }
@@ -439,6 +440,33 @@ function applyServerWorldState(core,s){
  diag.localPlayerVy=localPlayer&&localPlayer.body?Math.round(localPlayer.body.velocity.y):null;
  window.__BSO_SERVER_BALL_STATE=s.ballState||(s.ball&&s.ball.state)||"unknown";
  if(core.ball&&s.ball)applyBall(core,s.ball,1,players);
+ // Synchronize server-decided contact outcomes (for example a defender being
+ // stunned by a steal or a block sensor removing their block shape) without
+ // overwriting either player's locally simulated position.
+ for(const item of s.objects){
+  if(!item||!Number.isFinite(item.side)||!Number.isFinite(item.playerNo))continue;
+  const player=players.find(p=>p&&p.SIDE===item.side&&p.playerNo===item.playerNo);
+  if(!player)continue;
+  if(typeof item.state==="string"&&player.state!==item.state&&typeof player.playState==="function"){
+   try{player.playState(item.state)}catch(_){player.state=item.state}
+  }
+  for(const flag of ["canTakeInHands","canAct","canDoAction","isBlockedOrPump","needBlock","isGrounded"]){
+   const key=flag==="isGrounded"?"grounded":flag;
+   if(typeof item[key]==="boolean")player[flag]=item[key];
+  }
+  if(typeof item.blockShape==="boolean"&&player.body&&player.block&&player.body.shapes){
+   const has=typeof player.body.shapes.has==="function"&&player.body.shapes.has(player.block);
+   if(item.blockShape&&!has&&typeof player.body.shapes.add==="function")player.body.shapes.add(player.block);
+   if(!item.blockShape&&has&&typeof player.body.shapes.remove==="function")player.body.shapes.remove(player.block);
+   if(item.blockShape&&Number.isFinite(player.blockMass))player.body.gravMass=player.blockMass;
+   else if(!item.blockShape&&Number.isFinite(player.baseMass))player.body.gravMass=player.baseMass;
+  }
+  if(typeof item.blockBody==="boolean"&&player.body&&player.blockBody&&player.body.shapes){
+   const has=typeof player.body.shapes.has==="function"&&player.body.shapes.has(player.blockBody);
+   if(item.blockBody&&!has&&typeof player.body.shapes.add==="function")player.body.shapes.add(player.blockBody);
+   if(!item.blockBody&&has&&typeof player.body.shapes.remove==="function")player.body.shapes.remove(player.blockBody);
+  }
+ }
  if(s.scoreEvent&&Number.isFinite(s.scoreEvent.id)&&s.scoreEvent.id>lastScoreEventId){
   lastScoreEventId=s.scoreEvent.id;
   if(typeof core.processMatchProcessor==="function"){
@@ -478,7 +506,9 @@ function install(){
     playerNo:local.playerNo,gameSide:Number(local.SIDE),
     x:position.x,y:position.y,vx:velocity.x,vy:velocity.y,
     rotation:body.rotation,grounded:!!local.isGrounded,
-    canTakeInHands:!!local.canTakeInHands,blockShape,blockBody,
+    canTakeInHands:!!local.canTakeInHands,canAct:!!local.canAct,
+    canDoAction:!!local.canDoAction,isBlockedOrPump:!!local.isBlockedOrPump,
+    needBlock:!!local.needBlock,blockShape,blockBody,
     facing:local.graphic&&local.graphic.scale&&local.graphic.scale.x>0?1:-1,
     state:typeof local.state==="string"?local.state:"idle",isHuman:local.isHuman!==false
    });
