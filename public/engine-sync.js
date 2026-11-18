@@ -8,7 +8,7 @@ if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;
 let latest=null,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
 let ownerTrackingInstalled=false;
 const snapshotBuffer=[];
-const INTERPOLATION_DELAY_MS=75;
+const INTERPOLATION_DELAY_MS=25;
 const diag={fps:0,phaserFps:0,desiredFps:0,framePacing:"40 FPS · host-matched",gameUps:0,coreMs:0,syncMs:0,packetHz:0,sentHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,snapshotSentCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
@@ -258,7 +258,8 @@ function visualValues(item){
  if(!item)return null;
  const b=item.body||{};
  // Use the host sprite transform plus its physics velocity to bridge brief
- // snapshot gaps without freezing Player 2's display.
+ // snapshot gaps without freezing Player 2's display. The normal presentation
+ // delay is only one 40 Hz step when the stream is arriving without gaps.
  return {
   x:Number.isFinite(item.x)?item.x:b.x,
   y:Number.isFinite(item.y)?item.y:b.y,
@@ -287,7 +288,7 @@ function renderInterpolatedSnapshot(core,now){
  const newest=snapshotBuffer[snapshotBuffer.length-1];
  if(targetTime>=newest.at){
   left=right=newest;
-  extrapolationMs=Math.min(75,targetTime-newest.at);
+  extrapolationMs=Math.min(50,targetTime-newest.at);
  }else if(targetTime>snapshotBuffer[0].at){
   for(let i=0;i<snapshotBuffer.length-1;i++){
    const a=snapshotBuffer[i],b=snapshotBuffer[i+1];
