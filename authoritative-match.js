@@ -38,6 +38,7 @@ class AuthoritativeMatch {
     this.blockSide = 0;
     this.blockIsHuman = true;
     this.restartTicks = 0;
+    this.restartSide = 0;
     this.createWorld();
   }
 
@@ -159,6 +160,7 @@ class AuthoritativeMatch {
     body.userData.gameSide = gameSide;
     body.userData.playerNo = playerNo;
     const legs = new P(P.box(20, 70), this.material.player.copy(), this.filter.player);
+    legs.cbTypes.add(this.cb.player);
     body.shapes.add(legs);
     const hands = new P(P.box(30, 80));
     hands.sensorEnabled = true; hands.cbTypes.add(this.cb.hands); body.shapes.add(hands);
@@ -169,6 +171,7 @@ class AuthoritativeMatch {
       x, y: 385, vx: 0, vy: 0, rotation: 0, grounded: true,
       canTakeInHands: true, blockShape: false, facing: -gameSide, isHuman: true, state: 'idle', updatedAt: 0
     };
+    body.allowRotation = false;
     body.userData.player = p;
     body.space = this.space;
     this.players.set(key, p);
@@ -366,6 +369,7 @@ class AuthoritativeMatch {
     this.scores[index] += points;
     this.scoreSequence++;
     this.scoreEvent = { id: this.scoreSequence, basketSide: hoopSide, points, isHuman, throwType, scores: this.scores.slice() };
+    this.restartSide = hoopSide;
     this.canScore = false; this.ballState = 'score'; this.ballHolder = null;
     if (this.ballBody.space) this.ballBody.space = null;
     this.restartTicks = 60;
@@ -383,12 +387,20 @@ class AuthoritativeMatch {
       this.previousInputs[side] = { ...(this.inputs[side] || {}) };
     }
     if (this.restartTicks > 0 && --this.restartTicks === 0) {
+      const restartSide = this.restartSide;
       this.ballState = 'up'; this.ballSide = 0; this.ballHolder = null;
-      this.canScore = false; this.upperSensorSeen = false; this.blockSide = 0;
+      this.canScore = false; this.upperSensorSeen = false; this.blockSide = 0; this.blockIsHuman = true;
       if (this.ballBody.space) this.ballBody.space = null;
       this.ballBody.position.setxy(WIDTH / 2, 300);
       this.ballBody.velocity.setxy(0, -500); this.ballBody.angularVel = 0;
       this.ballBody.space = this.space;
+      // After a score, the original game gives the restart possession to the
+      // side defending the basket that was just scored on.
+      if (restartSide === -1 || restartSide === 1) {
+        const restartSocketSide = restartSide === 1 ? 1 : 2;
+        this.takeBall(this.ensurePlayer(restartSocketSide, 0));
+      }
+      this.restartSide = 0;
     }
     if (this.ballState !== 'inHands' && this.ballState !== 'score' && this.ballBody.space) this.space.step(dt);
     this.sequence++;
