@@ -57,6 +57,7 @@ function startDiagnostics(){
     "Movement updates sent/sec: "+diag.sentHz,
     "Server physics snapshots/sec: "+diag.packetHz,
     "Socket: "+(socket.connected?"connected":"disconnected")+" · "+((socket.io&&socket.io.engine&&socket.io.engine.transport&&socket.io.engine.transport.name)||"connecting"),
+    "Physics authority: server Nape",
     "Transport writable: "+!!(socket.io&&socket.io.engine&&socket.io.engine.transport&&socket.io.engine.transport.writable),
     "Last snapshot age: "+(diag.packetAgeMs===null?"none":diag.packetAgeMs+" ms"),
     "Sequence gaps: "+diag.sequenceGaps,
@@ -509,6 +510,7 @@ function install(){
     canTakeInHands:!!local.canTakeInHands,canAct:!!local.canAct,
     canDoAction:!!local.canDoAction,isBlockedOrPump:!!local.isBlockedOrPump,
     needBlock:!!local.needBlock,blockShape,blockBody,
+    shieldActive:!!(local.shield&&local.shield.body&&local.shield.body.space!==null),
     facing:local.graphic&&local.graphic.scale&&local.graphic.scale.x>0?1:-1,
     state:typeof local.state==="string"?local.state:"idle",isHuman:local.isHuman!==false
    });
