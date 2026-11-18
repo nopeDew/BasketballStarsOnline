@@ -66,14 +66,9 @@ source = replaceUnique(
   'original game core export block'
 );
 
-// The original game sets Phaser's entire update/render loop to 40 FPS in GameplayState.init.
-// Keep the original 40 Hz basketball simulation, but allow Player 2 to render at 60 FPS.
-source = replaceUnique(
-  source,
-  '            this.game.time.desiredFps = 40,',
-  '            this.game.time.desiredFps = window.__BSO_HOST_PRESENTATION ? 60 : 40,',
-  'original gameplay frame-rate cap'
-);
+// Keep the original game's 40 Hz cap on both devices. Player 2 receives 40 Hz
+// authoritative snapshots, so forcing its Phaser loop to 60 Hz adds rendering
+// work without adding new simulation states to display.
 
 // Expose and hook the original game's native character selector for live online synchronization.
 source = replaceUnique(
