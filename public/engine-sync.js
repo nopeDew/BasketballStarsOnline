@@ -5,7 +5,56 @@ const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
 let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
+const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0};
+window.__BSO_SYNC_DIAG=diag;
+let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
+function startDiagnostics(){
+ const tick=()=>{rafFrames++;requestAnimationFrame(tick);};
+ requestAnimationFrame(tick);
+ setInterval(()=>{
+  const now=performance.now(),elapsed=Math.max(1,now-diagWindowStart);
+  diag.fps=Math.round(rafFrames*1000/elapsed);
+  diag.gameUps=Math.round(gameUpdates*1000/elapsed);
+  diag.coreMs=+(coreMsTotal/Math.max(1,gameUpdates)).toFixed(2);
+  diag.syncMs=+(syncMsTotal/Math.max(1,gameUpdates)).toFixed(2);
+  diag.packetHz=+(packetCount*1000/elapsed).toFixed(1);
+  diag.packetAgeMs=lastPacketAt?Math.round(now-lastPacketAt):null;
+  rafFrames=gameUpdates=packetCount=0;coreMsTotal=syncMsTotal=0;diagWindowStart=now;
+ },1000);
+ const installHud=()=>{
+  if(!document.body){setTimeout(installHud,100);return;}
+  const hud=document.createElement("div");
+  hud.id="bso-sync-diagnostics";
+  hud.style.cssText="display:none;position:fixed;right:10px;bottom:10px;z-index:2147483647;max-width:310px;padding:10px 12px;border:1px solid #d6a94e;border-radius:9px;background:#07111eee;color:#fff;font:12px/1.55 ui-monospace,monospace;white-space:pre;pointer-events:none";
+  document.body.appendChild(hud);
+  let visible=false;
+  window.addEventListener("keydown",event=>{
+   if(event.code==="F8"&&!event.repeat){visible=!visible;hud.style.display=visible?"block":"none";event.preventDefault();}
+  },true);
+  setInterval(()=>{
+   if(!visible)return;
+   const controller=window.__BSO_P2_CONTROLLER_DEBUG;
+   const remote=window.__BSO_REMOTE_INPUT_PACKETS||0;
+   hud.textContent=[
+    "BSO SYNC DIAGNOSTICS · P"+side,
+    "Render FPS: "+diag.fps,
+    "Game updates/sec: "+diag.gameUps,
+    "Core update: "+diag.coreMs+" ms",
+    "Network sync: "+diag.syncMs+" ms",
+    "Host snapshots/sec: "+diag.packetHz,
+    "Last snapshot age: "+(diag.packetAgeMs===null?"none":diag.packetAgeMs+" ms"),
+    "Sequence gaps: "+diag.sequenceGaps,
+    "Last sequence: "+diag.lastSequence,
+    "Remote input packets: "+remote,
+    "P2 controller: "+(controller?"active":"not reporting"),
+    "Press F8 to hide"
+   ].join("\n");
+  },200);
+ };
+ installHud();
+}
+startDiagnostics();
 function readBody(body){
  if(!body||!body.position||!body.velocity)return null;
  return {x:clamp(body.position.x),y:clamp(body.position.y),vx:clamp(body.velocity.x),vy:clamp(body.velocity.y),rotation:clamp(body.rotation),angularVel:clamp(body.angularVel)};
@@ -140,18 +189,26 @@ function install(){
  const original=C.prototype.update;
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
+  const coreStart=performance.now();
   original.call(this,dt);
+  const coreEnd=performance.now();
   if(!this.objects||!this.objects.length)return;
   if(side===1){
    const now=Date.now();
    // Volatile snapshots keep real-time state fresh instead of queueing stale frames under load.
-   if(now-lastSend>=33){lastSend=now;socket.volatile.emit("engineState",makeSnapshot(this));}
+   // The original Basketball Legends gameplay loop advances in 25 ms fixed steps (40 Hz).
+   // Publish at the same cadence so Player 2 isn't interpolating against a slower 30 Hz stream.
+   if(now-lastSend>=25){lastSend=now;socket.volatile.emit("engineState",makeSnapshot(this));}
   }else if(latest){
    const isNew=latest.sequence>lastAppliedSequence;
    if(isNew)lastAppliedSequence=latest.sequence;
-   // Reconcile smoothly every render frame; update score/match flags only on new packets.
+   // Reconcile smoothly every simulation tick; update score/match flags only on new packets.
    applySnapshot(this,latest,dt,isNew);
   }
+  const syncEnd=performance.now();
+  gameUpdates++;
+  coreMsTotal+=coreEnd-coreStart;
+  syncMsTotal+=syncEnd-coreEnd;
  };
  C.prototype.__bsoOnlinePatched=true;
  console.info("[BSO] Typed original-game state synchronization installed. Player "+side+(side===1?" is host.":" is following host state."));
@@ -162,8 +219,12 @@ function install(){
 socket.on("engineState",state=>{
  if(side!==2||!state||!Number.isSafeInteger(state.sequence))return;
  if(state.sequence<=lastReceivedSequence)return;
+ if(lastReceivedSequence&&state.sequence>lastReceivedSequence+1)diag.sequenceGaps+=state.sequence-lastReceivedSequence-1;
  lastReceivedSequence=state.sequence;
+ diag.lastSequence=state.sequence;
  latest=state;
+ lastPacketAt=performance.now();
+ packetCount++;
 });
 const start=Date.now();
 const timer=setInterval(()=>{
