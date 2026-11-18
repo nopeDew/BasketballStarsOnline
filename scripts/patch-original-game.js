@@ -166,10 +166,26 @@ source = replaceUnique(source, randomAnchor, randomReplacement, 'original 2-play
 // sprites after the original 40 Hz physics update and before Phaser renders.
 source = replaceUnique(
   source,
-  '    e.Name = "gameplay",',
+  '    e.Name = "gameplay",\n' +
+  '        e.pause = !1,\n' +
+  '        e.MAX_FRAME_TIME = .1,\n' +
+  '        e.DESIRED_FRAME_TIME = .025,\n' +
+  '        e.isAdsPause = !1,\n' +
+  '        e.loadedLevel = !1,\n' +
+  '        e\n' +
+  '    }(Phaser.State);\n' +
+  '    e.default = _',
+  '    e.Name = "gameplay",\n' +
+  '        e.pause = !1,\n' +
+  '        e.MAX_FRAME_TIME = .1,\n' +
+  '        e.DESIRED_FRAME_TIME = .025,\n' +
+  '        e.isAdsPause = !1,\n' +
+  '        e.loadedLevel = !1,\n' +
+  '        e\n' +
+  '    }(Phaser.State);\n' +
+  '    e.default = _;\n' +
   '    /* BSO_ONLINE_GAMEPLAY_STATE */\n' +
-  '    if (typeof window !== "undefined") window.__BSO_GameplayState = e;\n' +
-  '    e.Name = "gameplay",',
+  '    if (typeof window !== "undefined") window.__BSO_GameplayState = _;',
   'original gameplay state'
 );
 
