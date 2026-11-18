@@ -147,9 +147,7 @@ class AuthoritativeMatch {
       const player=body&&body.userData&&body.userData.player;
       if(player){
         if(body.shapes.has(player.block))body.shapes.remove(player.block);
-        if(body.shapes.has(player.blockBody))body.shapes.remove(player.blockBody);
-        player.blockShape=false;player.serverBlockDisabled=true;player.canTakeInHands=true;
-        body.gravMass=player.baseMass;
+        player.blockShape=false;player.serverBlockDisabled=true;
       }
     });
   }
@@ -199,6 +197,7 @@ class AuthoritativeMatch {
     p.grounded = packet.grounded === true;
     p.canTakeInHands = packet.canTakeInHands !== false;
     p.blockShape = packet.blockShape === true;
+    p.blockBodyActive = packet.blockBody === true;
     p.facing = packet.facing === 1 ? 1 : -1;
     p.isHuman = packet.isHuman !== false;
     p.state = typeof packet.state === 'string' ? packet.state.slice(0, 32) : 'idle';
@@ -207,13 +206,13 @@ class AuthoritativeMatch {
     p.body.velocity.setxy(p.vx, p.vy);
     p.body.rotation = p.rotation;
     if (!p.blockShape) p.serverBlockDisabled=false;
-    const shouldBlock=p.blockShape&&!p.serverBlockDisabled;
-    if (shouldBlock && !p.body.shapes.has(p.block)) p.body.shapes.add(p.block);
-    if (shouldBlock && !p.body.shapes.has(p.blockBody)) p.body.shapes.add(p.blockBody);
-    if (!shouldBlock && p.body.shapes.has(p.block)) p.body.shapes.remove(p.block);
-    if (!shouldBlock && p.body.shapes.has(p.blockBody)) p.body.shapes.remove(p.blockBody);
-    p.blockShape=shouldBlock;
-    p.body.gravMass=shouldBlock?p.blockMass:p.baseMass;
+    const shouldCollide=p.blockShape&&!p.serverBlockDisabled;
+    if (shouldCollide && !p.body.shapes.has(p.block)) p.body.shapes.add(p.block);
+    if (!shouldCollide && p.body.shapes.has(p.block)) p.body.shapes.remove(p.block);
+    if (p.blockBodyActive && !p.body.shapes.has(p.blockBody)) p.body.shapes.add(p.blockBody);
+    if (!p.blockBodyActive && p.body.shapes.has(p.blockBody)) p.body.shapes.remove(p.blockBody);
+    p.blockShape=shouldCollide;
+    p.body.gravMass=p.blockBodyActive?p.blockMass:p.baseMass;
     return true;
   }
 
@@ -311,7 +310,7 @@ class AuthoritativeMatch {
     const direction = holder.x > thief.x ? 1 : -1;
     this.ballSide = holder.gameSide;
     holder.canTakeInHands=false;holder.state='stun';
-    if(holder.blockShape){holder.blockShape=false;holder.serverBlockDisabled=true;holder.body.shapes.remove(holder.block);holder.body.shapes.remove(holder.blockBody);}
+    if(holder.blockShape){holder.blockShape=false;holder.serverBlockDisabled=true;if(holder.body.shapes.has(holder.block))holder.body.shapes.remove(holder.block);}
     this.canScore = false; this.upperSensorSeen = false;
     this.releaseBall(holder.x, holder.y, direction * (400 + ratio * 200), -100, 'steal');
     return true;
