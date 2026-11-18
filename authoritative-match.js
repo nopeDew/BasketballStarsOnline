@@ -71,7 +71,7 @@ class AuthoritativeMatch {
     };
     this.cb = {
       ball: new CB(), player: new CB(), ground: new CB(), border: new CB(), basket: new CB(),
-      ring: new CB(), hands: new CB(), block: new CB(), upper: new CB(), down: new CB()
+      ring: new CB(), hands: new CB(), block: new CB(), shield: new CB(), upper: new CB(), down: new CB()
     };
     this.space = new N.space.Space(V.weak(0, 450));
     this.space.worldLinearDrag = 0;
@@ -205,6 +205,7 @@ class AuthoritativeMatch {
     this.listen(E.BEGIN, T.COLLISION, this.cb.ball, this.cb.ring, () => { if (this.ballState !== 'score') this.ballState = 'basket'; });
     this.listen(E.BEGIN, T.SENSOR, this.cb.ball, this.cb.hands, e => this.onHands(e));
     this.listen(E.BEGIN, T.COLLISION, this.cb.ball, this.cb.block, e => this.onBlock(e));
+    this.listen(E.BEGIN, T.COLLISION, this.cb.ball, this.cb.shield, e => this.onShield(e));
     this.listen(E.BEGIN, T.SENSOR, this.cb.ball, this.cb.upper, () => { if (this.canScore) this.upperSensorSeen = true; });
     this.listen(E.BEGIN, T.SENSOR, this.cb.ball, this.cb.down, e => this.onDown(e));
     this.listen(E.BEGIN, T.SENSOR, this.cb.block, this.cb.down, e => {
@@ -250,14 +251,50 @@ class AuthoritativeMatch {
       isBlockedOrPump: false, needBlock: false,
       blockShape: false, serverBlockDisabled: false,
       facing: -gameSide, isHuman: true, state: 'idle', updatedAt: 0,
-      blockBodyActive: false
+      blockBodyActive: false, shieldActive: false, shieldBody: null, shieldShape: null
     };
+    this.createPlayerShield(p);
     body.gravMass = p.baseMass;
     body.allowRotation = false;
     body.userData.player = p;
     body.space = this.space;
     this.players.set(key, p);
     return p;
+  }
+
+  createPlayerShield(player) {
+    const N = this.N, B = N.phys.Body, BT = N.phys.BodyType, P = N.shape.Polygon;
+    const x = player.gameSide === -1 ? 42 : 758;
+    const offset = player.gameSide === -1 ? -23 : -49;
+    const body = new B(BT.STATIC, N.geom.Vec2.weak(x, 160));
+    const shape = new P(P.rect(offset, 30, 70, 10), null, this.filter.arena);
+    shape.cbTypes.add(this.cb.shield);
+    body.userData.side = player.gameSide;
+    body.shapes.add(shape);
+    player.shieldBody = body;
+    player.shieldShape = shape;
+    player.shieldActive = false;
+  }
+
+  updatePlayerShield(player, active) {
+    if (!player || !player.shieldBody) return;
+    if (player.shieldBody.space !== null && (!active || player._shieldSide !== player.gameSide))
+      player.shieldBody.space = null;
+    if (player._shieldSide !== player.gameSide) {
+      if (player.shieldBody.shapes.has(player.shieldShape)) player.shieldBody.shapes.remove(player.shieldShape);
+      const x = player.gameSide === -1 ? 42 : 758;
+      const offset = player.gameSide === -1 ? -23 : -49;
+      player.shieldBody.position.setxy(x, 160);
+      player.shieldBody.userData.side = player.gameSide;
+      const shape = new this.N.shape.Polygon(this.N.shape.Polygon.rect(offset, 30, 70, 10), null, this.filter.arena);
+      shape.cbTypes.add(this.cb.shield);
+      player.shieldBody.shapes.add(shape);
+      player.shieldShape = shape;
+      player._shieldSide = player.gameSide;
+    }
+    player.shieldActive = !!active;
+    if (player.shieldActive && player.shieldBody.space === null) player.shieldBody.space = this.space;
+    if (!player.shieldActive && player.shieldBody.space !== null) player.shieldBody.space = null;
   }
 
   setPlayerMovement(socketSide, packet) {
@@ -283,6 +320,7 @@ class AuthoritativeMatch {
     p.needBlock = packet.needBlock === true;
     p.blockShape = packet.blockShape === true;
     p.blockBodyActive = packet.blockBody === true;
+    this.updatePlayerShield(p, packet.shieldActive === true);
     p.facing = packet.facing === 1 ? 1 : -1;
     p.isHuman = packet.isHuman !== false;
     p.state = typeof packet.state === 'string' ? packet.state.slice(0, 32) : 'idle';
@@ -451,6 +489,16 @@ class AuthoritativeMatch {
     if (p) this.takeBall(p);
   }
 
+  onShield(e) {
+    if (this.ballState === 'score') return;
+    const shape = e && e.int2 && e.int2.castShape;
+    const body = shape && shape.body;
+    const side = body && body.userData && body.userData.side;
+    if (side !== -1 && side !== 1) return;
+    this.ballBody.velocity.setxy(-side * (200 + 100 * this.random()), -200 - 100 * this.random());
+    this.ballState = 'basket';
+  }
+
   onBlock(e) {
     const ball = e && e.int1 && e.int1.castBody;
     const shape = e && e.int2 && e.int2.castShape;
@@ -554,7 +602,7 @@ class AuthoritativeMatch {
       grounded: p.grounded, canTakeInHands: p.canTakeInHands,
       canAct: p.canAct, canDoAction: p.canDoAction,
       isBlockedOrPump: p.isBlockedOrPump, needBlock: p.needBlock,
-      blockShape: p.blockShape, blockBody: p.blockBodyActive,
+      blockShape: p.blockShape, blockBody: p.blockBodyActive, shieldActive: p.shieldActive,
       body: { x: p.x, y: p.y, vx: p.vx, vy: p.vy, rotation: p.rotation, angularVel: 0 }
     }));
     return { sequence: this.sequence, objects, ball, scores: this.scores.slice(), scoreEvent: this.scoreEvent, ballState: this.ballState };
