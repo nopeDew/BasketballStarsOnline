@@ -244,7 +244,9 @@ class AuthoritativeMatch {
       socketSide, gameSide, playerNo, body, hands, block, blockBody,
       x, y: 385, vx: 0, vy: 0, rotation: 0, grounded: true,
       baseMass: 3 * body.gravMass, blockMass: 2 * (3 * body.gravMass),
-      canTakeInHands: true, blockShape: false, serverBlockDisabled: false,
+      canTakeInHands: true, canAct: true, canDoAction: true,
+      isBlockedOrPump: false, needBlock: false,
+      blockShape: false, serverBlockDisabled: false,
       facing: -gameSide, isHuman: true, state: 'idle', updatedAt: 0,
       blockBodyActive: false
     };
@@ -273,6 +275,10 @@ class AuthoritativeMatch {
     p.rotation = clamp(finite(packet.rotation), -Math.PI, Math.PI);
     p.grounded = packet.grounded === true;
     p.canTakeInHands = packet.canTakeInHands !== false;
+    p.canAct = packet.canAct !== false;
+    p.canDoAction = packet.canDoAction !== false;
+    p.isBlockedOrPump = packet.isBlockedOrPump === true;
+    p.needBlock = packet.needBlock === true;
     p.blockShape = packet.blockShape === true;
     p.blockBodyActive = packet.blockBody === true;
     p.facing = packet.facing === 1 ? 1 : -1;
@@ -386,7 +392,10 @@ class AuthoritativeMatch {
     const ratio = clamp(Math.abs(holder.x - thief.x) / 55, 0, 1);
     const direction = holder.x > thief.x ? 1 : -1;
     this.ballSide = holder.gameSide;
-    holder.canTakeInHands=false;holder.state='stun';
+    holder.canTakeInHands=false;
+    holder.canAct=false;
+    holder.canDoAction=false;
+    holder.state='stun';
     if(holder.blockShape){holder.blockShape=false;holder.serverBlockDisabled=true;if(holder.body.shapes.has(holder.block))holder.body.shapes.remove(holder.block);}
     this.canScore = false; this.upperSensorSeen = false;
     this.releaseBall(holder.x, holder.y, direction * (400 + ratio * 200), -100, 'steal');
@@ -489,6 +498,19 @@ class AuthoritativeMatch {
       this.ballBody.space = this.space;
       // After a score, the original game gives the restart possession to the
       // side defending the basket that was just scored on.
+      for (const player of this.players.values()) {
+        player.canTakeInHands = true;
+        player.canAct = true;
+        player.canDoAction = true;
+        player.isBlockedOrPump = false;
+        player.needBlock = false;
+        player.state = 'idle';
+        player.serverBlockDisabled = false;
+        player.blockShape = false;
+        if (player.body.shapes.has(player.block)) player.body.shapes.remove(player.block);
+        if (player.body.shapes.has(player.blockBody)) player.body.shapes.remove(player.blockBody);
+        player.body.gravMass = player.baseMass;
+      }
       if (restartSide === -1 || restartSide === 1) {
         const restartPlayer = [...this.players.values()].find(p => p.playerNo === 0 && p.gameSide === restartSide);
         if (restartPlayer) this.takeBall(restartPlayer);
@@ -515,7 +537,10 @@ class AuthoritativeMatch {
       i: p.playerNo, type: 0, typeIndex: 0, side: p.gameSide, playerNo: p.playerNo,
       x: p.x, y: p.y, r: p.rotation, visible: true, alpha: 1, state: p.state,
       withBall: !!(this.ballHolder && this.ballHolder.socketSide === p.socketSide && this.ballHolder.playerNo === p.playerNo),
-      grounded: p.grounded, canTakeInHands: p.canTakeInHands, blockShape: p.blockShape,
+      grounded: p.grounded, canTakeInHands: p.canTakeInHands,
+      canAct: p.canAct, canDoAction: p.canDoAction,
+      isBlockedOrPump: p.isBlockedOrPump, needBlock: p.needBlock,
+      blockShape: p.blockShape, blockBody: p.blockBodyActive,
       body: { x: p.x, y: p.y, vx: p.vx, vy: p.vy, rotation: p.rotation, angularVel: 0 }
     }));
     return { sequence: this.sequence, objects, ball, scores: this.scores.slice(), scoreEvent: this.scoreEvent, ballState: this.ballState };
