@@ -294,18 +294,6 @@ io.on("connection", socket => {
     room.authoritativeMatch.action(player.side, action);
   });
 
-  // Player 1 is the authoritative simulation. Player 2 receives its snapshots.
-  socket.on("engineState", state => {
-    const room = rooms.get(socket.data.engineRoom);
-    const player = findPlayer(room, socket);
-    if (!room || !room.started || !player || player.side !== 1 || !state || !Array.isArray(state.objects)) return;
-    if (state.objects.length > 250) return;
-    const opponent = room.players.find(p => p.side === 2 && p.socketId);
-    // Preserve every authoritative snapshot. Volatile delivery was dropping a large
-    // fraction of the 40 Hz stream and causing visible stutter on Player 2.
-    if (opponent) io.to(opponent.socketId).emit("engineState", state);
-  });
-
   socket.on("engineLeave", acknowledge => {
     const room = rooms.get(socket.data.engineRoom);
     const player = findPlayer(room, socket);
