@@ -5,7 +5,7 @@ const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
 let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
-const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0};
+const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
@@ -48,6 +48,10 @@ function startDiagnostics(){
     "Last sequence: "+diag.lastSequence,
     "Remote input packets: "+remote,
     "P2 controller: "+(controller?"active":"not reporting"),
+    "Local P2 avatar: "+(diag.localPlayerFound?"prediction active":"not found"),
+    "Local avatar Y: "+(diag.localPlayerY===null?"n/a":diag.localPlayerY),
+    "Grounded: "+(diag.localPlayerGrounded===null?"n/a":diag.localPlayerGrounded),
+    "Vertical velocity: "+(diag.localPlayerVy===null?"n/a":diag.localPlayerVy),
     "Press F8 to hide"
    ].join("\n");
   },200);
@@ -159,13 +163,28 @@ function applyBall(core,item,alpha){
  }
  applyObject(ball,item,transitioned?1:alpha);
 }
+function isLocallyControlledP2(player){
+ const Controller=window.__BSO_PlayerController2;
+ if(side!==2||!player||!player.controller||!Controller)return false;
+ return player.controller instanceof Controller||player.controller.constructor===Controller;
+}
 function applySnapshot(core,s,dt,applyUi){
  if(!s||!Array.isArray(s.objects))return;
  const alpha=1-Math.exp(-Math.max(1,Math.min(50,Number(dt)||16.67))/65);
  const localPlayers=[...(core.playersLeft||[]),...(core.playersRight||[])];
+ const localP2=localPlayers.find(isLocallyControlledP2)||null;
+ diag.localPlayerFound=!!localP2;
+ diag.localPlayerY=localP2&&localP2.body?Math.round(localP2.body.position.y):null;
+ diag.localPlayerGrounded=localP2?!!localP2.isGrounded:null;
+ diag.localPlayerVy=localP2&&localP2.body?Math.round(localP2.body.velocity.y):null;
  for(const item of s.objects){
   const player=Number.isFinite(item.playerNo)&&Number.isFinite(item.side)?localPlayers.find(p=>p&&p.playerNo===item.playerNo&&p.SIDE===item.side):null;
-  if(player)applyObject(player,item,alpha);
+  if(!player)continue;
+  // Player 2's own character runs the original local physics and controller.
+  // Correcting its transform/grounded flag after every step fights Nape's
+  // gravity and collision callbacks, which can leave the player floating.
+  if(isLocallyControlledP2(player))continue;
+  applyObject(player,item,alpha);
  }
  // The ball has its own stable reference on MainGameCore; use it even if object
  // creation order differs between the two browser simulations.
