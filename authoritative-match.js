@@ -1,0 +1,381 @@
+'use strict';
+
+const WIDTH = 1066;
+const STEP = 1 / 40;
+
+function loadNape(file) {
+  if (global.nape) return global.nape;
+  const previousWindow = global.window;
+  if (!global.window) global.window = global;
+  try { require(file); }
+  finally {
+    if (previousWindow === undefined) delete global.window;
+    else global.window = previousWindow;
+  }
+  if (!global.nape) throw new Error('Nape failed to initialize on the server.');
+  return global.nape;
+}
+const finite = (v, d = 0) => Number.isFinite(Number(v)) ? Number(v) : d;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+class AuthoritativeMatch {
+  constructor(napeFile, seed = 1) {
+    this.N = loadNape(napeFile);
+    this.randomState = (Number(seed) >>> 0) || 1;
+    this.players = new Map();
+    this.inputs = { 1: {}, 2: {} };
+    this.previousInputs = { 1: {}, 2: {} };
+    this.sequence = 0;
+    this.scoreSequence = 0;
+    this.scoreEvent = null;
+    this.scores = [0, 0];
+    this.ballState = 'up';
+    this.ballSide = 0;
+    this.ballHolder = null;
+    this.canScore = false;
+    this.upperSensorSeen = false;
+    this.throwType = 6;
+    this.blockSide = 0;
+    this.restartTicks = 0;
+    this.createWorld();
+  }
+
+  random() {
+    let t = this.randomState = (this.randomState + 0x6D2B79F5) >>> 0;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  createWorld() {
+    const N = this.N, V = N.geom.Vec2;
+    const B = N.phys.Body, BT = N.phys.BodyType, P = N.shape.Polygon, C = N.shape.Circle;
+    const M = N.phys.Material, F = N.dynamics.InteractionFilter, CB = N.callbacks.CbType;
+
+    this.material = {
+      floor: new M(0.4, 1, 1, 0.9, 3),
+      ball: new M(1, 0.6, 0.6, 0.7, 1),
+      glass: new M(0.5, 1, 1, 1),
+      basket: new M(0.35, 2, 2, 1),
+      player: new M(0, 1, 1, 100, 0)
+    };
+    this.filter = {
+      ball: new F(17, 4368), basket: new F(16, 4353),
+      arena: new F(4369, 4369), border: new F(4369, 4352),
+      player: new F(273, 4096, 4096)
+    };
+    this.cb = {
+      ball: new CB(), ground: new CB(), border: new CB(), basket: new CB(),
+      ring: new CB(), hands: new CB(), block: new CB(), upper: new CB(), down: new CB()
+    };
+    this.space = new N.space.Space(V.weak(0, 450));
+    this.createArena(B, BT, P);
+    this.createBasket(-1, B, BT, P, C);
+    this.createBasket(1, B, BT, P, C);
+    this.createBall(B, BT, C);
+    this.registerCollisions();
+  }
+
+  createArena(B, BT, P) {
+    const body = new B(BT.STATIC, this.N.geom.Vec2.weak(0, 0));
+    const add = (r, mat, filter, cb) => {
+      const shape = new P(P.rect(r[0], r[1], r[2], r[3]), mat, filter);
+      shape.cbTypes.add(cb);
+      body.shapes.add(shape);
+    };
+    add([-50, 420, 900, 60], this.material.floor, this.filter.arena, this.cb.ground);
+    add([0, -800, 5, 1300], this.material.floor, this.filter.border, this.cb.border);
+    add([795, -800, 5, 1300], this.material.floor, this.filter.border, this.cb.border);
+    add([-80, -800, 40, 1300], this.material.floor, this.filter.arena, this.cb.border);
+    add([840, -800, 5, 1300], this.material.floor, this.filter.arena, this.cb.border);
+    body.space = this.space;
+  }
+
+  createBasket(side, B, BT, P, C) {
+    const N = this.N, center = side === -1 ? 55 : WIDTH - 55;
+    const body = new B(BT.STATIC, N.geom.Vec2.weak(center, 200));
+    body.userData.side = side;
+    const glassX = side === -1 ? -55 : 43;
+    const glass = new P(P.rect(glassX, -100, 12, 120), this.material.glass, this.filter.basket);
+    glass.cbTypes.add(this.cb.basket);
+    body.shapes.add(glass);
+    const upper = new P(P.rect(-25, -10, 50, 5), null, this.filter.basket);
+    upper.sensorEnabled = true; upper.cbTypes.add(this.cb.upper); body.shapes.add(upper);
+    const down = new P(P.rect(-25, 15, 50, 5), null, this.filter.basket);
+    down.sensorEnabled = true; down.cbTypes.add(this.cb.down); body.shapes.add(down);
+    body.space = this.space;
+    for (const x of [center - 30, center, center + 30]) {
+      const rimBody = new B(BT.STATIC, N.geom.Vec2.weak(x, 200));
+      const rim = new C(7, null, this.material.basket, this.filter.basket);
+      rim.sensorEnabled = x === center;
+      rim.cbTypes.add(this.cb.ring);
+      rimBody.shapes.add(rim);
+      rimBody.space = this.space;
+    }
+  }
+
+  createBall(B, BT, C) {
+    const ball = new B(BT.DYNAMIC, this.N.geom.Vec2.weak(WIDTH / 2, 300));
+    const circle = new C(18, null, this.material.ball, this.filter.ball);
+    circle.cbTypes.add(this.cb.ball);
+    ball.shapes.add(circle);
+    ball.gravMass *= 2;
+    ball.space = this.space;
+    ball.velocity.setxy(0, -500);
+    this.ballBody = ball;
+  }
+
+  listen(event, type, a, b, fn) {
+    this.space.listeners.add(new this.N.callbacks.InteractionListener(event, type, a, b, fn));
+  }
+
+  registerCollisions() {
+    const E = this.N.callbacks.CbEvent, T = this.N.callbacks.InteractionType;
+    this.listen(E.BEGIN, T.COLLISION, this.cb.ball, this.cb.ground, () => this.onGround(true));
+    this.listen(E.BEGIN, T.COLLISION, this.cb.ball, this.cb.border, () => this.onGround(false));
+    this.listen(E.BEGIN, T.COLLISION, this.cb.ball, this.cb.basket, () => { if (this.ballState !== 'score') this.ballState = 'basket'; });
+    this.listen(E.BEGIN, T.COLLISION, this.cb.ball, this.cb.ring, () => { if (this.ballState !== 'score') this.ballState = 'basket'; });
+    this.listen(E.BEGIN, T.SENSOR, this.cb.ball, this.cb.hands, e => this.onHands(e));
+    this.listen(E.BEGIN, T.COLLISION, this.cb.ball, this.cb.block, e => this.onBlock(e));
+    this.listen(E.BEGIN, T.SENSOR, this.cb.ball, this.cb.upper, () => { if (this.canScore) this.upperSensorSeen = true; });
+    this.listen(E.BEGIN, T.SENSOR, this.cb.ball, this.cb.down, e => this.onDown(e));
+  }
+
+  ensurePlayer(socketSide, playerNo = 0) {
+    const key = socketSide + ':' + playerNo;
+    if (this.players.has(key)) return this.players.get(key);
+    const N = this.N, B = N.phys.Body, BT = N.phys.BodyType, P = N.shape.Polygon;
+    const gameSide = socketSide === 1 ? 1 : -1;
+    const x = socketSide === 1 ? 350 : WIDTH - 350;
+    const body = new B(BT.KINEMATIC, N.geom.Vec2.weak(x, 385));
+    body.userData.socketSide = socketSide;
+    body.userData.gameSide = gameSide;
+    body.userData.playerNo = playerNo;
+    const legs = new P(P.box(20, 70), this.material.player.copy(), this.filter.player);
+    body.shapes.add(legs);
+    const hands = new P(P.box(30, 80));
+    hands.sensorEnabled = true; hands.cbTypes.add(this.cb.hands); body.shapes.add(hands);
+    const block = new P(P.rect(-5, 0, 10, -70), this.material.basket, this.filter.basket);
+    block.cbTypes.add(this.cb.block);
+    const p = {
+      socketSide, gameSide, playerNo, body, hands, block,
+      x, y: 385, vx: 0, vy: 0, rotation: 0, grounded: true,
+      canTakeInHands: true, blockShape: false, state: 'idle', updatedAt: 0
+    };
+    body.userData.player = p;
+    body.space = this.space;
+    this.players.set(key, p);
+    return p;
+  }
+
+  setPlayerMovement(socketSide, packet) {
+    if ((socketSide !== 1 && socketSide !== 2) || !packet || typeof packet !== 'object') return false;
+    const no = clamp(Math.trunc(finite(packet.playerNo)), 0, 1);
+    const p = this.ensurePlayer(socketSide, no);
+    const x = finite(packet.x, NaN), y = finite(packet.y, NaN);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || x < -50 || x > WIDTH + 50 || y < -100 || y > 740) return false;
+    p.x = x; p.y = y;
+    p.vx = clamp(finite(packet.vx), -900, 900);
+    p.vy = clamp(finite(packet.vy), -1200, 1200);
+    p.rotation = clamp(finite(packet.rotation), -Math.PI, Math.PI);
+    p.grounded = packet.grounded === true;
+    p.canTakeInHands = packet.canTakeInHands !== false;
+    p.blockShape = packet.blockShape === true;
+    p.state = typeof packet.state === 'string' ? packet.state.slice(0, 32) : 'idle';
+    p.updatedAt = Date.now();
+    p.body.position.setxy(p.x, p.y);
+    p.body.velocity.setxy(p.vx, p.vy);
+    p.body.rotation = p.rotation;
+    if (p.blockShape && !p.body.shapes.has(p.block)) p.body.shapes.add(p.block);
+    if (!p.blockShape && p.body.shapes.has(p.block)) p.body.shapes.remove(p.block);
+    return true;
+  }
+
+  setInput(socketSide, actions) {
+    if ((socketSide !== 1 && socketSide !== 2) || !actions || typeof actions !== 'object') return;
+    this.previousInputs[socketSide] = this.inputs[socketSide] || {};
+    this.inputs[socketSide] = {
+      left: !!actions.left, right: !!actions.right, jump: !!actions.jump,
+      down: !!actions.down, shoot: !!actions.shoot, super: !!actions.super
+    };
+  }
+
+  takeBall(p) {
+    if (!p || !p.canTakeInHands || ['shooting', 'inHands', 'score'].includes(this.ballState)) return false;
+    if (this.ballBody.space) this.ballBody.space = null;
+    this.ballHolder = { socketSide: p.socketSide, gameSide: p.gameSide, playerNo: p.playerNo };
+    this.ballSide = p.gameSide; this.ballState = 'inHands';
+    this.canScore = false; this.upperSensorSeen = false; this.blockSide = 0;
+    return true;
+  }
+
+  releaseBall(x, y, vx, vy, state) {
+    if (!this.ballBody.space) this.ballBody.space = this.space;
+    this.ballBody.position.setxy(x, y); this.ballBody.velocity.setxy(vx, vy);
+    this.ballBody.rotation = 0; this.ballBody.angularVel = 0;
+    this.ballState = state; this.ballHolder = null;
+  }
+
+  action(socketSide, action) {
+    if (!action || typeof action.type !== 'string') return false;
+    if (action.type === 'shoot') return this.shoot(socketSide, action);
+    if (action.type === 'dunk') return this.dunk(socketSide, action);
+    if (action.type === 'steal') return this.steal(socketSide, action);
+    if (action.type === 'fromHands') return this.fromHands(socketSide, action);
+    return false;
+  }
+
+  shoot(socketSide, a) {
+    const no = clamp(Math.trunc(finite(a.playerNo)), 0, 1);
+    if (!this.ballHolder || this.ballHolder.socketSide !== socketSide || this.ballHolder.playerNo !== no) return false;
+    const p = this.ensurePlayer(socketSide, no), side = p.gameSide;
+    const x = clamp(finite(a.x, p.x - side * 20), p.x - 85, p.x + 85);
+    const y = clamp(finite(a.y, p.y - 50), p.y - 110, p.y + 30);
+    const playerVX = clamp(finite(a.playerVelocityX, p.vx), -900, 900);
+    const accuracy = clamp(finite(a.accuracy), 0, 0.5);
+    const targetX = side === 1 ? 55 : WIDTH - 55;
+    const relX = side === 1 ? x : WIDTH - x;
+    let power = relX <= 150 ? 70 : relX <= 250 ? 100 : relX <= 350 ? 0.3 * relX + 40 : relX <= 540 ? 150 : 130;
+    power = Math.min(185, power * (1 + 0.1 * (this.random() <= 0.5 ? -1 : 1) * this.random()));
+    const g = 900;
+    const calcVel = (sx, sy, tx, ty, v) => {
+      const vy = -Math.sqrt(Math.max(0, 2 * g * (sy - (ty - v))));
+      const time = (-vy / g) + Math.sqrt(2 * v / g);
+      return { x: (tx - sx) / Math.max(0.001, time) * 1.035, y: vy };
+    };
+    const base = calcVel(x, y, targetX, 200, power);
+    const vert = y < 235 ? 0 : y >= 295 ? 0.1 : (1 - (295 - y) / 60) * 0.1;
+    const range = relX <= 100 ? 0 : relX <= 200 ? 0.01 : relX <= 300 ? 0.02 : relX <= 400 ? 0.03 : relX <= 490 ? 0.04 : relX <= 540 ? 0.01 : 0.07;
+    const dispersion = (this.random() < 0.5 ? -1 : 1) * (0.01 + vert + range + Math.abs(playerVX) / 212.5 * 0.1 + accuracy) * this.random();
+    const factor = Math.abs(dispersion) <= 0.02 ? 1 : dispersion < -0.08 ? 2 : dispersion > 0.08 ? 3 : 1 + dispersion;
+    const velocity = factor < 2 ? { x: base.x * factor, y: base.y } :
+      calcVel(x, y, targetX + (factor === 2 ? 30 * side : -30 * side), 200, power);
+    const point = finite(a.pointOfThrow, p.x);
+    const threeLine = side === 1 ? 500 : WIDTH - 500;
+    this.throwType = (point - threeLine) * side >= 0 ? 0 : 6;
+    this.ballSide = side; this.blockSide = 0; this.canScore = true; this.upperSensorSeen = false;
+    this.releaseBall(x, y, velocity.x, velocity.y, 'shooting');
+    this.ballBody.angularVel = side * (5 + 10 * this.random());
+    return true;
+  }
+
+  dunk(socketSide, a) {
+    const no = clamp(Math.trunc(finite(a.playerNo)), 0, 1);
+    if (!this.ballHolder || this.ballHolder.socketSide !== socketSide || this.ballHolder.playerNo !== no) return false;
+    const p = this.ensurePlayer(socketSide, no), side = p.gameSide;
+    const success = this.random() <= clamp(finite(a.chance, 1), 0, 1);
+    const x = side === 1 ? (success ? 72 : 55) : (success ? WIDTH - 72 : WIDTH - 55);
+    this.throwType = success ? 1 : 9; this.ballSide = side;
+    this.blockSide = 0; this.canScore = true; this.upperSensorSeen = false;
+    this.releaseBall(x, 170, success ? -260 * side : -550 * side, 400, 'dunk');
+    return success;
+  }
+
+  steal(socketSide, a) {
+    const no = clamp(Math.trunc(finite(a.playerNo)), 0, 1);
+    const thief = this.ensurePlayer(socketSide, no);
+    if (!this.ballHolder || this.ballHolder.socketSide === socketSide) return false;
+    const holder = this.players.get(this.ballHolder.socketSide + ':' + this.ballHolder.playerNo);
+    if (!holder || Math.hypot(thief.x - holder.x, thief.y - holder.y) > 55) return false;
+    return this.takeBall(thief);
+  }
+
+  fromHands(socketSide, a) {
+    if (!this.ballHolder || this.ballHolder.socketSide !== socketSide) return false;
+    const no = this.ballHolder.playerNo, p = this.ensurePlayer(socketSide, no);
+    const x = finite(a.x, p.x), y = finite(a.y, p.y), direction = finite(a.direction, p.gameSide);
+    this.canScore = false; this.upperSensorSeen = false;
+    this.releaseBall(x, y, 150 * direction, -100, 'down');
+    return true;
+  }
+
+  onGround(ground) {
+    if (this.ballState === 'inHands' || this.ballState === 'score') return;
+    this.ballState = 'bounce';
+    if (ground && this.ballBody.space) this.ballBody.velocity.y = -400;
+  }
+
+  onHands(e) {
+    const shape = e && e.int2 && e.int2.castShape;
+    const body = shape && shape.body;
+    const p = body && body.userData && body.userData.player;
+    if (p) this.takeBall(p);
+  }
+
+  onBlock(e) {
+    const ball = e && e.int1 && e.int1.castBody;
+    const shape = e && e.int2 && e.int2.castShape;
+    const body = shape && shape.body;
+    const p = body && body.userData && body.userData.player;
+    if (!ball || !p || (ball.position.x - shape.worldCOM.x) * this.ballSide <= 0) return;
+    this.ballState = 'block'; this.blockSide = p.gameSide;
+  }
+
+  onDown(e) {
+    if (!this.canScore || !this.upperSensorSeen) { this.canScore = false; return; }
+    const shape = e && e.int2 && e.int2.castShape;
+    const body = shape && shape.body;
+    const hoopSide = body && body.userData && body.userData.side;
+    if (hoopSide !== -1 && hoopSide !== 1) return;
+    const points = this.blockSide === -hoopSide ? 2 : (this.throwType === 0 ? 3 : 2);
+    const index = hoopSide === -1 ? 1 : 0;
+    this.scores[index] += points;
+    this.scoreSequence++;
+    this.scoreEvent = { id: this.scoreSequence, basketSide: hoopSide, points, isHuman: true, throwType: this.throwType, scores: this.scores.slice() };
+    this.canScore = false; this.ballState = 'score'; this.ballHolder = null;
+    if (this.ballBody.space) this.ballBody.space = null;
+    this.restartTicks = 60;
+  }
+
+  tick(dt = STEP) {
+    for (const p of this.players.values()) {
+      if (Date.now() - p.updatedAt > 1000) p.body.velocity.setxy(0, 0);
+      else {
+        p.body.position.setxy(p.x, p.y);
+        p.body.velocity.setxy(p.vx, p.vy);
+      }
+    }
+    for (const side of [1, 2]) {
+      const input = this.inputs[side] || {}, prev = this.previousInputs[side] || {};
+      if (input.down && !prev.down) {
+        const p = [...this.players.values()].find(v => v.socketSide === side);
+        if (p && this.ballHolder && this.ballHolder.socketSide !== side) this.steal(side, { playerNo: p.playerNo });
+      }
+      this.previousInputs[side] = { ...input };
+    }
+    if (this.restartTicks > 0 && --this.restartTicks === 0) {
+      this.ballState = 'up'; this.ballSide = 0; this.ballHolder = null;
+      this.canScore = false; this.upperSensorSeen = false; this.blockSide = 0;
+      if (this.ballBody.space) this.ballBody.space = null;
+      this.ballBody.position.setxy(WIDTH / 2, 300);
+      this.ballBody.velocity.setxy(0, -500); this.ballBody.angularVel = 0;
+      this.ballBody.space = this.space;
+    }
+    if (this.ballState !== 'inHands' && this.ballState !== 'score' && this.ballBody.space) this.space.step(dt);
+    this.sequence++;
+    return this.snapshot();
+  }
+
+  snapshot() {
+    const holder = this.ballHolder && this.players.get(this.ballHolder.socketSide + ':' + this.ballHolder.playerNo);
+    const x = holder ? holder.x : this.ballBody.position.x;
+    const y = holder ? holder.y - 35 : this.ballBody.position.y;
+    const ball = {
+      i: -1, type: 0, typeIndex: 0, x, y, r: this.ballBody.rotation,
+      visible: this.ballState !== 'inHands', alpha: 1, state: this.ballState,
+      side: this.ballSide, playerNo: this.ballHolder ? this.ballHolder.playerNo : 0,
+      holder: this.ballHolder ? { side: this.ballHolder.gameSide, playerNo: this.ballHolder.playerNo } : null,
+      body: { x, y, vx: this.ballBody.velocity.x, vy: this.ballBody.velocity.y, rotation: this.ballBody.rotation, angularVel: this.ballBody.angularVel }
+    };
+    const objects = [...this.players.values()].map(p => ({
+      i: p.playerNo, type: 0, typeIndex: 0, side: p.gameSide, playerNo: p.playerNo,
+      x: p.x, y: p.y, r: p.rotation, visible: true, alpha: 1, state: p.state,
+      withBall: !!(this.ballHolder && this.ballHolder.socketSide === p.socketSide && this.ballHolder.playerNo === p.playerNo),
+      grounded: p.grounded, canTakeInHands: p.canTakeInHands, blockShape: p.blockShape,
+      body: { x: p.x, y: p.y, vx: p.vx, vy: p.vy, rotation: p.rotation, angularVel: 0 }
+    }));
+    return { sequence: this.sequence, objects, ball, scores: this.scores.slice(), scoreEvent: this.scoreEvent, ballState: this.ballState };
+  }
+}
+
+module.exports = { AuthoritativeMatch, STEP };
