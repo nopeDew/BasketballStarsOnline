@@ -271,7 +271,8 @@ socket.on("engineRemoteInput",packet=>{
 
 });
 socket.on("engineOpponentDisconnected",()=>returnToLoadingScreen("Opponent left. Returning to the lobby…"));
-socket.on("engineOpponentReconnected",()=>status("Opponent reconnected."));
+socket.on("engineOpponentConnectionLost",info=>status("Opponent connection interrupted · waiting up to "+Math.round((info&&info.gracePeriodMs||30000)/1000)+" seconds for reconnection…"));
+socket.on("engineOpponentReconnected",()=>status("Opponent reconnected · match connection restored."));
 socket.on("engineError",message=>status(message));
 socket.on("disconnect",()=>{releaseAll();status("Connection lost. Reconnecting…")});
 window.addEventListener("keydown",event=>{
