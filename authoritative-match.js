@@ -425,7 +425,7 @@ class AuthoritativeMatch {
     const thief = this.ensurePlayer(socketSide, no);
     if (!this.ballHolder || this.ballHolder.socketSide === socketSide) return false;
     const holder = this.players.get(this.ballHolder.socketSide + ':' + this.ballHolder.playerNo);
-    if (!thief.grounded || !thief.canDoAction || !holder || !holder.grounded) return false;
+    if (!holder || !holder.grounded) return false;
     const attackX = clamp(finite(a.attackX, thief.x), -50, WIDTH + 50);
     const attackDirection = finite(a.direction, thief.facing) === 1 ? 1 : -1;
     // Original PlayerObject.checkToBeStolen(): test the 55px interval in the
