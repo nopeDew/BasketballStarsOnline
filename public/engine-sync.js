@@ -9,14 +9,15 @@ let latest=null,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
 let ownerTrackingInstalled=false;
 const snapshotBuffer=[];
 const INTERPOLATION_DELAY_MS=25;
-const diag={fps:0,phaserFps:0,desiredFps:0,framePacing:"40 FPS · host-matched",gameUps:0,coreMs:0,syncMs:0,packetHz:0,sentHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
+const diag={fps:0,phaserFps:0,desiredFps:0,framePacing:"40 FPS · host-matched",gameUps:0,coreMs:0,syncMs:0,packetHz:0,sentHz:0,renderHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
 window.__BSO_SYNC_DIAG=diag;
-let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,snapshotSentCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
+let rafFrames=0,renderFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,snapshotSentCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
 function startDiagnostics(){
  setInterval(()=>{
   const now=performance.now(),elapsed=Math.max(1,now-diagWindowStart);
   diag.fps=Math.round(rafFrames*1000/elapsed);
+  diag.renderHz=Math.round(renderFrames*1000/elapsed);
   diag.gameUps=Math.round(gameUpdates*1000/elapsed);
   diag.coreMs=+(coreMsTotal/Math.max(1,gameUpdates)).toFixed(2);
   diag.syncMs=+(syncMsTotal/Math.max(1,gameUpdates)).toFixed(2);
@@ -24,7 +25,7 @@ function startDiagnostics(){
   diag.sentHz=+(snapshotSentCount*1000/elapsed).toFixed(1);
   diag.packetAgeMs=lastPacketAt?Math.round(now-lastPacketAt):null;
   // Both clients use the original game's 40 Hz fixed-step pace.
-  rafFrames=gameUpdates=packetCount=snapshotSentCount=0;coreMsTotal=syncMsTotal=0;diagWindowStart=now;
+  rafFrames=renderFrames=gameUpdates=packetCount=snapshotSentCount=0;coreMsTotal=syncMsTotal=0;diagWindowStart=now;
  },1000);
  const installHud=()=>{
   if(!document.body){setTimeout(installHud,100);return;}
@@ -42,7 +43,8 @@ function startDiagnostics(){
    const remote=window.__BSO_REMOTE_INPUT_PACKETS||0;
    hud.textContent=[
     "BSO SYNC DIAGNOSTICS · P"+side,
-    "Gameplay updates/sec: "+diag.fps,
+    "Phaser state updates/sec: "+diag.fps,
+    "Phaser pre-render/sec: "+diag.renderHz,
     "Phaser measured FPS: "+diag.phaserFps,
     "Phaser target FPS: "+diag.desiredFps,
     "Frame pacing: "+diag.framePacing,
@@ -343,12 +345,18 @@ function renderInterpolatedSnapshot(core,now){
 function installGameplayRenderer(){
  if(side!==2)return true;
  const G=window.__BSO_GameplayState;
- if(!G||!G.prototype||typeof G.prototype.update!=="function")return false;
+ if(!G||!G.prototype||typeof G.prototype.update!=="function"||typeof G.prototype.preRender!=="function")return false;
  if(G.prototype.__bsoPresentationRenderInstalled)return true;
+ // Phaser's update callback is throttled by the game's 40 Hz simulation step,
+ // but preRender runs immediately before every actual canvas/WebGL draw.
  const originalUpdate=G.prototype.update;
  G.prototype.update=function(){
   rafFrames++;
-  const result=originalUpdate.apply(this,arguments);
+  return originalUpdate.apply(this,arguments);
+ };
+ const originalPreRender=G.prototype.preRender;
+ G.prototype.preRender=function(){
+  renderFrames++;
   const C=window.__BSO_MainGameCore;
   const core=C&&C.instance;
   if(core)renderInterpolatedSnapshot(core,performance.now());
@@ -356,11 +364,11 @@ function installGameplayRenderer(){
   diag.renderer=renderer&&renderer.constructor?renderer.constructor.name:"unknown";
   diag.phaserFps=this.game&&this.game.time?this.game.time.fps:0;
   diag.desiredFps=this.game&&this.game.time?this.game.time.desiredFps:0;
-  return result;
+  return originalPreRender.apply(this,arguments);
  };
  G.prototype.__bsoPresentationRenderInstalled=true;
- diag.renderHook="active";
- console.info("[BSO] Player 2 render-frame interpolation installed.");
+ diag.renderHook="active · preRender";
+ console.info("[BSO] Player 2 interpolation now runs before every Phaser render.");
  return true;
 }
 function applySnapshot(core,s,dt,applyUi){
