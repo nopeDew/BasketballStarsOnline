@@ -48,7 +48,8 @@ function startDiagnostics(){
     "Sequence gaps: "+diag.sequenceGaps,
     "Last sequence: "+diag.lastSequence,
     "Remote input packets: "+remote,
-    "P2 controller: "+(controller?"active":"not reporting"),
+    "P2 controls: "+(side===2?"relayed to host":(controller?"active":"not reporting")),
+    "P2 simulation: "+(side===2?"host-authoritative":"local host"),
     "Host ball state: "+(diag.hostBallState||"unknown"),
     "Host ball holder: "+(diag.hostHolder||"none"),
     "Local ball holders: "+(diag.localHolders||"none"),
@@ -309,7 +310,7 @@ function install(){
  C.prototype.__bsoOnlinePatched=true;
  console.info("[BSO] Typed original-game state synchronization installed. Player "+side+(side===1?" is host.":" is following host state."));
  const status=document.getElementById("bso-status");
- if(status)status.textContent=side===1?"Online match active · You are host":"Online match active · Synced to host";
+ if(status)status.textContent=side===1?"Online match active · You are host":"Online match active · Host-authoritative presentation";
  return true;
 }
 socket.on("engineState",state=>{
