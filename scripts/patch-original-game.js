@@ -184,14 +184,8 @@ source = replaceUnique(
   'original gameplay state'
 );
 
-// Skip redundant body-to-sprite iteration on Player 2. Player 2 is a
-// host-driven presentation client and its remote sprites are interpolated separately.
-source = replaceUnique(
-  source,
-  '                d.MainGameCore.instance.isPaused || d.MainGameCore.instance.physics.updateGraphics()',
-  '                (!window.__BSO_HOST_PRESENTATION && !d.MainGameCore.instance.isPaused) && d.MainGameCore.instance.physics.updateGraphics()',
-  'original gameplay graphics update'
-);
+// Preserve the original per-render physics-to-graphic update for both clients.
+// Player 2 predicts its own avatar locally, while host snapshots correct the opponent and ball.
 
 // Keep the game's original WebGL renderer. Phaser.AUTO can silently fall back
 // to Canvas on Player 2's device, producing a large frame-rate drop.
