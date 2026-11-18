@@ -470,10 +470,11 @@ function install(){
   if(local&&local.body&&socket.connected){
    const body=local.body,position=body.position,velocity=body.velocity;
    const blockShape=!!(local.block&&body.shapes&&typeof body.shapes.has==="function"&&body.shapes.has(local.block));
+   const blockBody=!!(local.blockBody&&body.shapes&&typeof body.shapes.has==="function"&&body.shapes.has(local.blockBody));
    socket.volatile.emit("engineMovement",{
     playerNo:local.playerNo,x:position.x,y:position.y,vx:velocity.x,vy:velocity.y,
     rotation:body.rotation,grounded:!!local.isGrounded,
-    canTakeInHands:!!local.canTakeInHands,blockShape,
+    canTakeInHands:!!local.canTakeInHands,blockShape,blockBody,
     facing:local.graphic&&local.graphic.scale&&local.graphic.scale.x>0?1:-1,
     state:typeof local.state==="string"?local.state:"idle",isHuman:local.isHuman!==false
    });
