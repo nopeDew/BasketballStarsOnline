@@ -9,9 +9,9 @@ let latest=null,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
 let ownerTrackingInstalled=false;
 const snapshotBuffer=[];
 const INTERPOLATION_DELAY_MS=75;
-const diag={fps:0,phaserFps:0,desiredFps:0,framePacing:"40 FPS · host-matched",gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
+const diag={fps:0,phaserFps:0,desiredFps:0,framePacing:"40 FPS · host-matched",gameUps:0,coreMs:0,syncMs:0,packetHz:0,sentHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
 window.__BSO_SYNC_DIAG=diag;
-let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
+let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,snapshotSentCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
 function startDiagnostics(){
  setInterval(()=>{
@@ -21,9 +21,10 @@ function startDiagnostics(){
   diag.coreMs=+(coreMsTotal/Math.max(1,gameUpdates)).toFixed(2);
   diag.syncMs=+(syncMsTotal/Math.max(1,gameUpdates)).toFixed(2);
   diag.packetHz=+(packetCount*1000/elapsed).toFixed(1);
+  diag.sentHz=+(snapshotSentCount*1000/elapsed).toFixed(1);
   diag.packetAgeMs=lastPacketAt?Math.round(now-lastPacketAt):null;
   // Both clients use the original game's 40 Hz fixed-step pace.
-  rafFrames=gameUpdates=packetCount=0;coreMsTotal=syncMsTotal=0;diagWindowStart=now;
+  rafFrames=gameUpdates=packetCount=snapshotSentCount=0;coreMsTotal=syncMsTotal=0;diagWindowStart=now;
  },1000);
  const installHud=()=>{
   if(!document.body){setTimeout(installHud,100);return;}
@@ -51,7 +52,10 @@ function startDiagnostics(){
     "Game updates/sec: "+diag.gameUps,
     "Core update: "+diag.coreMs+" ms",
     "Network sync: "+diag.syncMs+" ms",
-    "Host snapshots/sec: "+diag.packetHz,
+    "Snapshots sent/sec: "+diag.sentHz,
+    "Snapshots received/sec: "+diag.packetHz,
+    "Socket: "+(socket.connected?"connected":"disconnected")+" · "+((socket.io&&socket.io.engine&&socket.io.engine.transport&&socket.io.engine.transport.name)||"connecting"),
+    "Transport writable: "+!!(socket.io&&socket.io.engine&&socket.io.engine.transport&&socket.io.engine.transport.writable),
     "Last snapshot age: "+(diag.packetAgeMs===null?"none":diag.packetAgeMs+" ms"),
     "Sequence gaps: "+diag.sequenceGaps,
     "Last sequence: "+diag.lastSequence,
@@ -418,6 +422,7 @@ function install(){
    // Reliable delivery matters here: dropping snapshots creates visible pauses on P2.
    // The 40 Hz stream is small, so send every authoritative simulation step.
    socket.emit("engineState",makeSnapshot(this));
+   snapshotSentCount++;
   }else if(latest){
    const isNew=latest.sequence>lastAppliedSequence;
    if(isNew)lastAppliedSequence=latest.sequence;
