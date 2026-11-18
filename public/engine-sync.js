@@ -415,9 +415,9 @@ function install(){
   if(!this.objects||!this.objects.length)return;
   if(side===1){
    // MainGameCore.update runs inside the original 25 ms fixed-step accumulator.
-   // Publish once for every authoritative simulation step. A wall-clock >=25 ms
-   // gate can skip every other update when the browser ticks at 24.x ms intervals.
-   socket.volatile.emit("engineState",makeSnapshot(this));
+   // Reliable delivery matters here: dropping snapshots creates visible pauses on P2.
+   // The 40 Hz stream is small, so send every authoritative simulation step.
+   socket.emit("engineState",makeSnapshot(this));
   }else if(latest){
    const isNew=latest.sequence>lastAppliedSequence;
    if(isNew)lastAppliedSequence=latest.sequence;
