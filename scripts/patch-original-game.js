@@ -153,8 +153,30 @@ const randomReplacement =
   '    e.default = _';
 source = replaceUnique(source, randomAnchor, randomReplacement, 'original 2-player selection state');
 
-if (!source.includes('renderer: Phaser.WEBGL,')) throw new Error('Could not locate the original renderer setting.');
-source = source.replace('renderer: Phaser.WEBGL,', 'renderer: Phaser.AUTO,');
+// Expose the actual gameplay state so the online client can interpolate remote
+// sprites after the original 40 Hz physics update and before Phaser renders.
+source = replaceUnique(
+  source,
+  '    e.Name = "gameplay",',
+  '    /* BSO_ONLINE_GAMEPLAY_STATE */\n' +
+  '    if (typeof window !== "undefined") window.__BSO_GameplayState = e;\n' +
+  '    e.Name = "gameplay",',
+  'original gameplay state'
+);
+
+// Skip redundant body-to-sprite iteration on Player 2. Player 2 is a
+// host-driven presentation client and its remote sprites are interpolated separately.
+source = replaceUnique(
+  source,
+  '                d.MainGameCore.instance.isPaused || d.MainGameCore.instance.physics.updateGraphics()',
+  '                (!window.__BSO_HOST_PRESENTATION && !d.MainGameCore.instance.isPaused) && d.MainGameCore.instance.physics.updateGraphics()',
+  'original gameplay graphics update'
+);
+
+// Keep the game's original WebGL renderer. Phaser.AUTO can silently fall back
+// to Canvas on Player 2's device, producing a large frame-rate drop.
+if (!source.includes('renderer: Phaser.WEBGL,')) throw new Error('Could not locate the original WebGL renderer.');
+source = source.replace('renderer: Phaser.AUTO,', 'renderer: Phaser.WEBGL,');
 
 if (!source.includes('this.playBtn2.visible = !1,')) throw new Error('Could not locate the original 2-player menu visibility setting.');
 source = source.replace('this.playBtn2.visible = !1,', '');
