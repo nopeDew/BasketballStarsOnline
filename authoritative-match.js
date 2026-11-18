@@ -1,6 +1,6 @@
 'use strict';
 
-const WIDTH = 1066;
+const WIDTH = 800;
 const STEP = 1 / 40;
 
 function loadNape(file) {
@@ -380,12 +380,7 @@ class AuthoritativeMatch {
       }
     }
     for (const side of [1, 2]) {
-      const input = this.inputs[side] || {}, prev = this.previousInputs[side] || {};
-      if (input.shoot && !prev.shoot) {
-        const p = [...this.players.values()].find(v => v.socketSide === side);
-        if (p && this.ballHolder && this.ballHolder.socketSide !== side) this.steal(side, { playerNo: p.playerNo });
-      }
-      this.previousInputs[side] = { ...input };
+      this.previousInputs[side] = { ...(this.inputs[side] || {}) };
     }
     if (this.restartTicks > 0 && --this.restartTicks === 0) {
       this.ballState = 'up'; this.ballSide = 0; this.ballHolder = null;
