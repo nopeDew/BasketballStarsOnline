@@ -36,6 +36,7 @@ class AuthoritativeMatch {
     this.upperSensorSeen = false;
     this.throwType = 6;
     this.blockSide = 0;
+    this.blockIsHuman = true;
     this.restartTicks = 0;
     this.createWorld();
   }
@@ -69,6 +70,7 @@ class AuthoritativeMatch {
       ring: new CB(), hands: new CB(), block: new CB(), upper: new CB(), down: new CB()
     };
     this.space = new N.space.Space(V.weak(0, 450));
+    this.space.worldLinearDrag = 0;
     this.createArena(B, BT, P);
     this.createBasket(-1, B, BT, P, C);
     this.createBasket(1, B, BT, P, C);
@@ -139,6 +141,11 @@ class AuthoritativeMatch {
     this.listen(E.BEGIN, T.COLLISION, this.cb.ball, this.cb.block, e => this.onBlock(e));
     this.listen(E.BEGIN, T.SENSOR, this.cb.ball, this.cb.upper, () => { if (this.canScore) this.upperSensorSeen = true; });
     this.listen(E.BEGIN, T.SENSOR, this.cb.ball, this.cb.down, e => this.onDown(e));
+    this.listen(E.BEGIN, T.SENSOR, this.cb.block, this.cb.down, e => {
+      const shape=e&&e.int1&&e.int1.castShape, body=shape&&shape.body;
+      const player=body&&body.userData&&body.userData.player;
+      if(player&&body.shapes.has(player.block))body.shapes.remove(player.block);
+    });
   }
 
   ensurePlayer(socketSide, playerNo = 0) {
@@ -160,7 +167,7 @@ class AuthoritativeMatch {
     const p = {
       socketSide, gameSide, playerNo, body, hands, block,
       x, y: 385, vx: 0, vy: 0, rotation: 0, grounded: true,
-      canTakeInHands: true, blockShape: false, state: 'idle', updatedAt: 0
+      canTakeInHands: true, blockShape: false, facing: -gameSide, isHuman: true, state: 'idle', updatedAt: 0
     };
     body.userData.player = p;
     body.space = this.space;
@@ -181,6 +188,8 @@ class AuthoritativeMatch {
     p.grounded = packet.grounded === true;
     p.canTakeInHands = packet.canTakeInHands !== false;
     p.blockShape = packet.blockShape === true;
+    p.facing = packet.facing === 1 ? 1 : -1;
+    p.isHuman = packet.isHuman !== false;
     p.state = typeof packet.state === 'string' ? packet.state.slice(0, 32) : 'idle';
     p.updatedAt = Date.now();
     p.body.position.setxy(p.x, p.y);
@@ -222,6 +231,7 @@ class AuthoritativeMatch {
     if (action.type === 'dunk') return this.dunk(socketSide, action);
     if (action.type === 'steal') return this.steal(socketSide, action);
     if (action.type === 'fromHands') return this.fromHands(socketSide, action);
+    if (action.type === 'alleyOop') return this.alleyOop(socketSide, action);
     return false;
   }
 
@@ -276,8 +286,16 @@ class AuthoritativeMatch {
     const thief = this.ensurePlayer(socketSide, no);
     if (!this.ballHolder || this.ballHolder.socketSide === socketSide) return false;
     const holder = this.players.get(this.ballHolder.socketSide + ':' + this.ballHolder.playerNo);
-    if (!holder || Math.hypot(thief.x - holder.x, thief.y - holder.y) > 55) return false;
-    return this.takeBall(thief);
+    if (!holder || !holder.grounded) return false;
+    const low = thief.facing === 1 ? thief.x : thief.x - 55;
+    const high = thief.facing === 1 ? thief.x + 55 : thief.x;
+    if (holder.x < low || holder.x > high) return false;
+    const ratio = clamp(Math.abs(holder.x - thief.x) / 55, 0, 1);
+    const direction = holder.x > thief.x ? 1 : -1;
+    this.ballSide = holder.gameSide;
+    this.canScore = false; this.upperSensorSeen = false;
+    this.releaseBall(holder.x, holder.y, direction * (400 + ratio * 200), -100, 'steal');
+    return true;
   }
 
   fromHands(socketSide, a) {
@@ -287,6 +305,27 @@ class AuthoritativeMatch {
     this.canScore = false; this.upperSensorSeen = false;
     this.releaseBall(x, y, 150 * direction, -100, 'down');
     return true;
+  }
+
+  alleyOop(socketSide, a) {
+    const no = clamp(Math.trunc(finite(a.playerNo)), 0, 1);
+    if (!this.ballHolder || this.ballHolder.socketSide !== socketSide || this.ballHolder.playerNo !== no) return false;
+    const p = this.ensurePlayer(socketSide, no), side = p.gameSide;
+    const x = clamp(finite(a.x, p.x), p.x - 85, p.x + 85);
+    const y = clamp(finite(a.y, p.y - 50), p.y - 110, p.y + 30);
+    const targetX = side === 1 ? 160 : WIDTH - 160;
+    const velocity = this.calcThrowVelocity(x, y, targetX, 150, 150);
+    this.ballSide = side; this.blockSide = 0; this.canScore = true; this.upperSensorSeen = false;
+    this.throwType = 1;
+    this.releaseBall(x, y, velocity.x, velocity.y, 'alleyOop');
+    return true;
+  }
+
+  calcThrowVelocity(x, y, targetX, targetY, power) {
+    const gravity = 900;
+    const vy = -Math.sqrt(Math.max(0, 2 * gravity * (y - (targetY - power))));
+    const time = (-vy / gravity) + Math.sqrt(2 * power / gravity);
+    return { x: (targetX - x) / Math.max(0.001, time) * 1.035, y: vy };
   }
 
   onGround(ground) {
@@ -308,7 +347,9 @@ class AuthoritativeMatch {
     const body = shape && shape.body;
     const p = body && body.userData && body.userData.player;
     if (!ball || !p || (ball.position.x - shape.worldCOM.x) * this.ballSide <= 0) return;
-    this.ballState = 'block'; this.blockSide = p.gameSide;
+    this.ballState = 'block';
+    this.canScore = true; this.upperSensorSeen = false;
+    this.blockSide = p.gameSide; this.blockIsHuman = p.isHuman !== false;
   }
 
   onDown(e) {
@@ -317,11 +358,14 @@ class AuthoritativeMatch {
     const body = shape && shape.body;
     const hoopSide = body && body.userData && body.userData.side;
     if (hoopSide !== -1 && hoopSide !== 1) return;
-    const points = this.blockSide === -hoopSide ? 2 : (this.throwType === 0 ? 3 : 2);
+    const blocked = this.blockSide === -hoopSide;
+    const points = blocked ? 2 : (this.throwType === 0 ? 3 : 2);
+    const isHuman = blocked ? this.blockIsHuman : true;
+    const throwType = blocked ? 2 : this.throwType;
     const index = hoopSide === -1 ? 1 : 0;
     this.scores[index] += points;
     this.scoreSequence++;
-    this.scoreEvent = { id: this.scoreSequence, basketSide: hoopSide, points, isHuman: true, throwType: this.throwType, scores: this.scores.slice() };
+    this.scoreEvent = { id: this.scoreSequence, basketSide: hoopSide, points, isHuman, throwType, scores: this.scores.slice() };
     this.canScore = false; this.ballState = 'score'; this.ballHolder = null;
     if (this.ballBody.space) this.ballBody.space = null;
     this.restartTicks = 60;
@@ -337,7 +381,7 @@ class AuthoritativeMatch {
     }
     for (const side of [1, 2]) {
       const input = this.inputs[side] || {}, prev = this.previousInputs[side] || {};
-      if (input.down && !prev.down) {
+      if (input.shoot && !prev.shoot) {
         const p = [...this.players.values()].find(v => v.socketSide === side);
         if (p && this.ballHolder && this.ballHolder.socketSide !== side) this.steal(side, { playerNo: p.playerNo });
       }
