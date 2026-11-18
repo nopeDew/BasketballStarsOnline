@@ -64,7 +64,7 @@ class AuthoritativeMatch {
     this.filter = {
       ball: new F(17, 4368), basket: new F(16, 4353),
       arena: new F(4369, 4369), border: new F(4369, 4352),
-      player: new F(273, 4096, 4096)
+      player: new F(273, 4096, 4096), playerBlock: new F(273, 4369)
     };
     this.cb = {
       ball: new CB(), player: new CB(), ground: new CB(), border: new CB(), basket: new CB(),
@@ -145,7 +145,12 @@ class AuthoritativeMatch {
     this.listen(E.BEGIN, T.SENSOR, this.cb.block, this.cb.down, e => {
       const shape=e&&e.int1&&e.int1.castShape, body=shape&&shape.body;
       const player=body&&body.userData&&body.userData.player;
-      if(player&&body.shapes.has(player.block))body.shapes.remove(player.block);
+      if(player){
+        if(body.shapes.has(player.block))body.shapes.remove(player.block);
+        if(body.shapes.has(player.blockBody))body.shapes.remove(player.blockBody);
+        player.blockShape=false;player.serverBlockDisabled=true;player.canTakeInHands=true;
+        body.gravMass=player.baseMass;
+      }
     });
   }
 
@@ -166,11 +171,14 @@ class AuthoritativeMatch {
     hands.sensorEnabled = true; hands.cbTypes.add(this.cb.hands); body.shapes.add(hands);
     const block = new P(P.rect(-5, 0, 10, -70), this.material.basket, this.filter.basket);
     block.cbTypes.add(this.cb.block);
+    const blockBody = new P(P.box(20, 70), this.material.player, this.filter.playerBlock);
     const p = {
-      socketSide, gameSide, playerNo, body, hands, block,
+      socketSide, gameSide, playerNo, body, hands, block, blockBody,
       x, y: 385, vx: 0, vy: 0, rotation: 0, grounded: true,
-      canTakeInHands: true, blockShape: false, facing: -gameSide, isHuman: true, state: 'idle', updatedAt: 0
+      baseMass:3*body.gravMass,blockMass:6*body.gravMass,
+      canTakeInHands: true, blockShape: false, serverBlockDisabled:false, facing: -gameSide, isHuman: true, state: 'idle', updatedAt: 0
     };
+    body.gravMass=p.baseMass;
     body.allowRotation = false;
     body.userData.player = p;
     body.space = this.space;
@@ -198,8 +206,14 @@ class AuthoritativeMatch {
     p.body.position.setxy(p.x, p.y);
     p.body.velocity.setxy(p.vx, p.vy);
     p.body.rotation = p.rotation;
-    if (p.blockShape && !p.body.shapes.has(p.block)) p.body.shapes.add(p.block);
-    if (!p.blockShape && p.body.shapes.has(p.block)) p.body.shapes.remove(p.block);
+    if (!p.blockShape) p.serverBlockDisabled=false;
+    const shouldBlock=p.blockShape&&!p.serverBlockDisabled;
+    if (shouldBlock && !p.body.shapes.has(p.block)) p.body.shapes.add(p.block);
+    if (shouldBlock && !p.body.shapes.has(p.blockBody)) p.body.shapes.add(p.blockBody);
+    if (!shouldBlock && p.body.shapes.has(p.block)) p.body.shapes.remove(p.block);
+    if (!shouldBlock && p.body.shapes.has(p.blockBody)) p.body.shapes.remove(p.blockBody);
+    p.blockShape=shouldBlock;
+    p.body.gravMass=shouldBlock?p.blockMass:p.baseMass;
     return true;
   }
 
@@ -296,6 +310,8 @@ class AuthoritativeMatch {
     const ratio = clamp(Math.abs(holder.x - thief.x) / 55, 0, 1);
     const direction = holder.x > thief.x ? 1 : -1;
     this.ballSide = holder.gameSide;
+    holder.canTakeInHands=false;holder.state='stun';
+    if(holder.blockShape){holder.blockShape=false;holder.serverBlockDisabled=true;holder.body.shapes.remove(holder.block);holder.body.shapes.remove(holder.blockBody);}
     this.canScore = false; this.upperSensorSeen = false;
     this.releaseBall(holder.x, holder.y, direction * (400 + ratio * 200), -100, 'steal');
     return true;
@@ -351,6 +367,7 @@ class AuthoritativeMatch {
     const p = body && body.userData && body.userData.player;
     if (!ball || !p || (ball.position.x - shape.worldCOM.x) * this.ballSide <= 0) return;
     this.ballState = 'block';
+    this.ballSide = p.gameSide;
     this.canScore = true; this.upperSensorSeen = false;
     this.blockSide = p.gameSide; this.blockIsHuman = p.isHuman !== false;
   }
