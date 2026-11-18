@@ -3,10 +3,13 @@
 const socket=window.__BSO_SOCKET;
 const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
+window.__BSO_HOST_PRESENTATION=side===2;
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
 let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
 let ownerTrackingInstalled=false;
-const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
+const snapshotBuffer=[];
+const INTERPOLATION_DELAY_MS=25;
+const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
@@ -40,6 +43,8 @@ function startDiagnostics(){
    hud.textContent=[
     "BSO SYNC DIAGNOSTICS · P"+side,
     "Render FPS: "+diag.fps,
+    "Renderer: "+diag.renderer,
+    "Render interpolation: "+diag.renderHook+" · "+diag.interpolationDelayMs+" ms buffer",
     "Game updates/sec: "+diag.gameUps,
     "Core update: "+diag.coreMs+" ms",
     "Network sync: "+diag.syncMs+" ms",
@@ -242,6 +247,80 @@ function lockPresentationClient(core){
  }
  if(core.ball&&core.ball.body&&core.ball.body.space!==null)core.ball.body.space=null;
 }
+function visualValues(item){
+ if(!item)return null;
+ const b=item.body||{};
+ return {
+  x:Number.isFinite(b.x)?b.x:item.x,
+  y:Number.isFinite(b.y)?b.y:item.y,
+  r:Number.isFinite(b.rotation)?b.rotation:item.r,
+  scaleX:Number.isFinite(item.scaleX)?item.scaleX:1,
+  scaleY:Number.isFinite(item.scaleY)?item.scaleY:1
+ };
+}
+function lerp(a,b,t){return a+(b-a)*t}
+function renderInterpolatedSnapshot(core,now){
+ if(side!==2||!core||!snapshotBuffer.length)return;
+ const targetTime=now-INTERPOLATION_DELAY_MS;
+ let left=snapshotBuffer[0],right=left;
+ if(targetTime>=snapshotBuffer[snapshotBuffer.length-1].at){
+  left=right=snapshotBuffer[snapshotBuffer.length-1];
+ }else if(targetTime>snapshotBuffer[0].at){
+  for(let i=0;i<snapshotBuffer.length-1;i++){
+   const a=snapshotBuffer[i],b=snapshotBuffer[i+1];
+   if(targetTime>=a.at&&targetTime<=b.at){left=a;right=b;break;}
+  }
+ }
+ const span=right.at-left.at;
+ const t=span>0?Math.max(0,Math.min(1,(targetTime-left.at)/span)):1;
+ const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
+ for(const player of players){
+  const graphic=player&&player.graphic;
+  if(!graphic)continue;
+  const aItem=left.state.objects.find(item=>item.side===player.SIDE&&item.playerNo===player.playerNo);
+  const bItem=right.state.objects.find(item=>item.side===player.SIDE&&item.playerNo===player.playerNo);
+  const a=visualValues(aItem),b=visualValues(bItem);
+  if(!a&&!b)continue;
+  const first=a||b,second=b||a;
+  if(Number.isFinite(first.x)&&Number.isFinite(second.x))graphic.x=lerp(first.x,second.x,t);
+  if(Number.isFinite(first.y)&&Number.isFinite(second.y))graphic.y=lerp(first.y,second.y,t);
+  if(Number.isFinite(first.r)&&Number.isFinite(second.r))graphic.rotation=lerp(first.r,second.r,t);
+  if(graphic.scale){
+   if(Number.isFinite(first.scaleX)&&Number.isFinite(second.scaleX))graphic.scale.x=lerp(first.scaleX,second.scaleX,t);
+   if(Number.isFinite(first.scaleY)&&Number.isFinite(second.scaleY))graphic.scale.y=lerp(first.scaleY,second.scaleY,t);
+  }
+ }
+ const ballGraphic=core.ball&&core.ball.graphic;
+ if(ballGraphic){
+  const a=visualValues(left.state.ball),b=visualValues(right.state.ball);
+  if(a||b){
+   const first=a||b,second=b||a;
+   if(Number.isFinite(first.x)&&Number.isFinite(second.x))ballGraphic.x=lerp(first.x,second.x,t);
+   if(Number.isFinite(first.y)&&Number.isFinite(second.y))ballGraphic.y=lerp(first.y,second.y,t);
+   if(Number.isFinite(first.r)&&Number.isFinite(second.r))ballGraphic.rotation=lerp(first.r,second.r,t);
+  }
+ }
+}
+function installGameplayRenderer(){
+ if(side!==2)return true;
+ const G=window.__BSO_GameplayState;
+ if(!G||!G.prototype||typeof G.prototype.update!=="function")return false;
+ if(G.prototype.__bsoPresentationRenderInstalled)return true;
+ const originalUpdate=G.prototype.update;
+ G.prototype.update=function(){
+  const result=originalUpdate.apply(this,arguments);
+  const C=window.__BSO_MainGameCore;
+  const core=C&&C.instance;
+  if(core)renderInterpolatedSnapshot(core,performance.now());
+  const renderer=this.game&&this.game.renderer;
+  diag.renderer=renderer&&renderer.constructor?renderer.constructor.name:"unknown";
+  return result;
+ };
+ G.prototype.__bsoPresentationRenderInstalled=true;
+ diag.renderHook="active";
+ console.info("[BSO] Player 2 render-frame interpolation installed.");
+ return true;
+}
 function applySnapshot(core,s,dt,applyUi){
  if(!s||!Array.isArray(s.objects))return;
  // A 40 Hz authoritative stream is applied directly; don't add another 65 ms
@@ -286,7 +365,10 @@ function install(){
    lockPresentationClient(this);
   }else installBallOwnerTracking(this);
   const coreStart=performance.now();
-  original.call(this,dt);
+  // P2 is not a second game simulation. It receives the host's match state,
+  // so running the full Nape/object update loop here only wastes CPU and causes
+  // the rendering client to diverge again.
+  if(side===1)original.call(this,dt);
   const coreEnd=performance.now();
   if(side===2)lockPresentationClient(this);
   if(!this.objects||!this.objects.length)return;
@@ -321,11 +403,18 @@ socket.on("engineState",state=>{
  diag.lastSequence=state.sequence;
  latest=state;
  lastPacketAt=performance.now();
+ snapshotBuffer.push({at:lastPacketAt,state});
+ while(snapshotBuffer.length>8)snapshotBuffer.shift();
+ while(snapshotBuffer.length>2&&snapshotBuffer[1].at<lastPacketAt-180)snapshotBuffer.shift();
  packetCount++;
 });
 const start=Date.now();
 const timer=setInterval(()=>{
- if(install()){clearInterval(timer);return;}
- if(Date.now()-start>20000){clearInterval(timer);console.error("[BSO] Could not find the original match core; online state sync did not install.");const el=document.getElementById("bso-status");if(el)el.textContent="Online sync failed to initialize. Refresh both devices.";}
+ const coreInstalled=install();
+ const C=window.__BSO_MainGameCore;
+ const corePatched=!!(C&&C.prototype&&C.prototype.__bsoOnlinePatched);
+ const renderInstalled=installGameplayRenderer();
+ if(corePatched&&renderInstalled){clearInterval(timer);return;}
+ if(Date.now()-start>20000){clearInterval(timer);console.error("[BSO] Could not install the original game sync/render hooks.");const el=document.getElementById("bso-status");if(el)el.textContent="Online sync failed to initialize. Refresh both devices.";}
 },100);
 })();
