@@ -249,36 +249,41 @@ function installServerBallAuthority(core){
  if(!ball||!ball.body)return;
  const proto=Object.getPrototypeOf(ball);
  if(!proto||proto.__bsoServerBallAuthorityInstalled)return;
- const localGameSide=side===1?1:-1;
  const send=action=>{if(socket.connected)socket.emit("engineBallAction",action)};
  const localPlayer=()=>[...(core.playersLeft||[]),...(core.playersRight||[])].find(isLocalPlayer)||null;
- // Pickup is resolved by the server's player-hand sensor.
+ const isLocalSide=gameSide=>{
+  const player=localPlayer();
+  return !!player&&Number(gameSide)===Number(player.SIDE);
+ };
+ // Pickup, rim/net/player contacts and score sensors are resolved only by server Nape.
  proto.takeInHands=function(){return false};
- // Ball launches are commands. Only the controlling side sends them.
+ // These are action requests. The server checks the current ball holder and uses
+ // the authoritative player proxy's in-game SIDE, position and velocity.
  proto.shoot=function(gameSide,x,y,velocityX,accuracy){
-  if(Number(gameSide)!==localGameSide)return;
   const p=localPlayer();
-  send({type:"shoot",playerNo:p?p.playerNo:0,x,y,playerVelocityX:velocityX,accuracy,pointOfThrow:p&&p.pointOfThrow});
+  if(!p||!isLocalSide(gameSide))return;
+  send({type:"shoot",playerNo:p.playerNo,x,y,playerVelocityX:velocityX,accuracy,pointOfThrow:p.pointOfThrow});
  };
  proto.dunk=function(gameSide,chance){
-  if(Number(gameSide)!==localGameSide)return false;
   const p=localPlayer();
-  send({type:"dunk",playerNo:p?p.playerNo:0,chance});
+  if(!p||!isLocalSide(gameSide))return false;
+  send({type:"dunk",playerNo:p.playerNo,chance});
+  // The local animation continues; the server decides whether this dunk scores.
   return true;
  };
  proto.alleyOop=function(gameSide,x,y,player){
-  if(Number(gameSide)!==localGameSide)return;
   const p=player&&Number.isFinite(player.playerNo)?player:localPlayer();
-  send({type:"alleyOop",playerNo:p?p.playerNo:0,x,y});
+  if(!p||!isLocalSide(gameSide))return;
+  send({type:"alleyOop",playerNo:p.playerNo,x,y});
  };
  proto.fromHands=function(position,direction){
-  if(Number(this.SIDE)!==localGameSide)return;
-  send({type:"fromHands",x:position&&position.x,y:position&&position.y,direction});
+  const p=localPlayer();
+  if(!p||!isLocalSide(this.SIDE))return;
+  send({type:"fromHands",playerNo:p.playerNo,x:position&&position.x,y:position&&position.y,direction});
  };
- // Steal is relayed from MainGameCore.steal so only the locally controlled
- // player can originate it; the server validates range and possession.
+ // A steal request is validated against authoritative server-side defender position,
+ // grounded state, facing and possession. The client never applies ball physics.
  proto.applySteal=function(){};
- // Never reinsert the local visual ball into either browser's physics space.
  proto.returnToPhysics=function(){if(this.body&&this.body.space!==null)this.body.space=null};
  proto.toPhysics2=function(){if(this.body&&this.body.space!==null)this.body.space=null};
  proto.removeFromPhysics=function(){if(this.body&&this.body.space!==null)this.body.space=null};
@@ -287,11 +292,9 @@ function installServerBallAuthority(core){
  const C=window.__BSO_MainGameCore;
  if(C&&C.prototype&&typeof C.prototype.steal==="function"&&!C.prototype.__bsoServerStealRelayInstalled){
   const nativeSteal=C.prototype.steal;
-  C.prototype.steal=function(gameSide){
-   if(Number(gameSide)===localGameSide){
-    const p=localPlayer();
-    send({type:"steal",playerNo:p?p.playerNo:0});
-   }
+  C.prototype.steal=function(gameSide,attackX,direction,fromInput){
+   const p=localPlayer();
+   if(p&&isLocalSide(gameSide))send({type:"steal",playerNo:p.playerNo,attackX,direction});
    return nativeSteal.apply(this,arguments);
   };
   C.prototype.__bsoServerStealRelayInstalled=true;
@@ -472,7 +475,8 @@ function install(){
    const blockShape=!!(local.block&&body.shapes&&typeof body.shapes.has==="function"&&body.shapes.has(local.block));
    const blockBody=!!(local.blockBody&&body.shapes&&typeof body.shapes.has==="function"&&body.shapes.has(local.blockBody));
    socket.volatile.emit("engineMovement",{
-    playerNo:local.playerNo,x:position.x,y:position.y,vx:velocity.x,vy:velocity.y,
+    playerNo:local.playerNo,gameSide:Number(local.SIDE),
+    x:position.x,y:position.y,vx:velocity.x,vy:velocity.y,
     rotation:body.rotation,grounded:!!local.isGrounded,
     canTakeInHands:!!local.canTakeInHands,blockShape,blockBody,
     facing:local.graphic&&local.graphic.scale&&local.graphic.scale.x>0?1:-1,
