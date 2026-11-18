@@ -5,6 +5,7 @@ const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
 let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
+let ownerTrackingInstalled=false;
 const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
@@ -71,7 +72,7 @@ function readObject(o,index,typeIndex,core){
  const item={i:index,type:Number.isFinite(o&&o.objType)?o.objType:null,typeIndex};
  if(Number.isFinite(o&&o.SIDE))item.side=o.SIDE;
  if(Number.isFinite(o&&o.playerNo))item.playerNo=o.playerNo;
- if(g){item.x=clamp(g.x);item.y=clamp(g.y);item.r=clamp(g.rotation);item.visible=g.visible!==false;item.alpha=clamp(g.alpha);}
+ if(g){item.x=clamp(g.x);item.y=clamp(g.y);item.r=clamp(g.rotation);item.visible=g.visible!==false;item.alpha=clamp(g.alpha);if(g.scale&&Number.isFinite(g.scale.x))item.scaleX=g.scale.x;if(g.scale&&Number.isFinite(g.scale.y))item.scaleY=g.scale.y;}
  const body=readBody(b);if(body)item.body=body;
  if(b)item.physicsActive=b.space!==null;
  if(typeof o.state==="string")item.state=o.state;
@@ -85,13 +86,42 @@ function readObject(o,index,typeIndex,core){
  if(o===core.ball&&b)item.physicsSpace=b.space===null?0:b.space===o.space2?2:b.space===o.space1?1:3;
  return item;
 }
+function installBallOwnerTracking(core){
+ const ball=core&&core.ball;
+ if(!ball)return;
+ const proto=Object.getPrototypeOf(ball);
+ if(proto&&!proto.__bsoOwnerTrackingInstalled&&typeof proto.setState==="function"){
+  const nativeSetState=proto.setState;
+  proto.setState=function(state,team,playerNo,force){
+   if(state==="inHands"){
+    this.__bsoHolderSide=Number.isFinite(team)?team:this.SIDE;
+    this.__bsoHolderNo=Number.isFinite(playerNo)?playerNo:0;
+   }else{
+    this.__bsoHolderSide=null;
+    this.__bsoHolderNo=null;
+   }
+   return nativeSetState.apply(this,arguments);
+  };
+  proto.__bsoOwnerTrackingInstalled=true;
+ }
+ if(!ownerTrackingInstalled){
+  ownerTrackingInstalled=true;
+  if(ball.state==="inHands"&&!Number.isFinite(ball.__bsoHolderNo)){
+   const holder=[...(core.playersLeft||[]),...(core.playersRight||[])].find(p=>p&&p.withBall);
+   if(holder){ball.__bsoHolderSide=holder.SIDE;ball.__bsoHolderNo=holder.playerNo;}
+  }
+ }
+}
 function makeSnapshot(core){
  // The 1v1 match only needs authoritative player bodies plus the dedicated ball.
- // Avoid replicating every court/effect body every frame; it adds work without helping control.
  const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
  const objects=players.map((o,i)=>readObject(o,i,0,core)).filter(Boolean);
  const inv=window.__BSO_Inventory,md=inv&&inv.instance&&inv.instance.matchData;
- const holder=[...(core.playersLeft||[]),...(core.playersRight||[])].find(p=>p&&p.withBall);
+ let holder=null;
+ if(core.ball&&core.ball.state==="inHands"&&Number.isFinite(core.ball.__bsoHolderSide)&&Number.isFinite(core.ball.__bsoHolderNo)){
+  holder=players.find(p=>p&&p.SIDE===core.ball.__bsoHolderSide&&p.playerNo===core.ball.__bsoHolderNo)||null;
+ }
+ if(!holder)holder=players.find(p=>p&&p.withBall)||null;
  const ball=core.ball?readObject(core.ball,-1,0,core):null;
  if(ball){
   ball.holder=holder?{side:holder.SIDE,playerNo:holder.playerNo}:null;
@@ -117,7 +147,9 @@ function applyObject(o,item,alpha,coreLocalPlayer){
  // Blend authoritative corrections into Player 2's local prediction instead of
  // teleporting every body to a new 30 Hz snapshot.
  if(b&&p){
-  if(typeof item.physicsActive==="boolean"&&o!==coreLocalPlayer&&o.theSpace){
+  // Player 2 is a presentation client: its player bodies must never re-enter
+  // local Nape simulation. The host controls their transforms and physics state.
+  if(side!==2&&typeof item.physicsActive==="boolean"&&o!==coreLocalPlayer&&o.theSpace){
    if(!item.physicsActive&&b.space!==null)b.space=null;
    else if(item.physicsActive&&b.space===null)b.space=o.theSpace;
   }
@@ -137,14 +169,19 @@ function applyObject(o,item,alpha,coreLocalPlayer){
   if(Number.isFinite(item.x))g.x=Number.isFinite(g.x)?g.x+(item.x-g.x)*alpha:item.x;
   if(Number.isFinite(item.y))g.y=item.grounded===true?item.y:(Number.isFinite(g.y)?g.y+(item.y-g.y)*alpha:item.y);
   if(Number.isFinite(item.r))g.rotation=Number.isFinite(g.rotation)?g.rotation+(item.r-g.rotation)*alpha:item.r;
+  if(g.scale&&Number.isFinite(item.scaleX))g.scale.x=item.scaleX;
+  if(g.scale&&Number.isFinite(item.scaleY))g.scale.y=item.scaleY;
   if(typeof item.visible==="boolean")g.visible=item.visible;
   if(Number.isFinite(item.alpha))g.alpha=item.alpha;
  }
  if(typeof item.state==="string"&&o.state!==item.state){
-  // The transmitted state is already the exact DragonBones animation key (e.g. idle_wb).
+  // playState accepts the already-expanded keys (e.g. idle_wb) without adding another suffix.
   try{
-   o.prevState=o.state;o.state=item.state;
-   if(o.armature&&o.armature.animation&&typeof o.armature.animation.gotoAndPlay==="function")o.armature.animation.gotoAndPlay(item.state);
+   if(typeof o.playState==="function")o.playState(item.state);
+   else{
+    o.prevState=o.state;o.state=item.state;
+    if(o.armature&&o.armature.animation&&typeof o.armature.animation.gotoAndPlay==="function")o.armature.animation.gotoAndPlay(item.state);
+   }
   }catch(_){o.state=item.state;}
  }
  if(typeof item.grounded==="boolean")o.isGrounded=item.grounded;
@@ -179,39 +216,51 @@ function applyBall(core,item,alpha,players){
   else if(!expected&&player.withBall&&typeof player.freeBall==="function")player.freeBall();
  }
  diag.localHolders=(players||[]).filter(player=>player.withBall).map(player=>"side "+player.SIDE+" / player "+player.playerNo).join(", ")||"none";
- let transitioned=false;
- if(item.physicsSpace===0&&b.space!==null&&typeof ball.removeFromPhysics==="function"){
-  ball.removeFromPhysics();transitioned=true;
- }else if(item.physicsSpace===1&&ball.space1&&b.space!==ball.space1){
-  b.space=ball.space1;ball.updateGraphic();ball.setVisibleOnframe=true;transitioned=true;
- }else if(item.physicsSpace===2&&ball.space2&&b.space!==ball.space2){
-  b.space=ball.space2;ball.updateGraphic();ball.graphic.visible=true;transitioned=true;
- }
- applyObject(ball,item,transitioned?1:alpha,null);
+ // Player 2 never simulates the ball locally. Keep its body out of both Nape spaces
+ // while continuing to render the authoritative host position and velocity.
+ if(side===2&&b.space!==null)b.space=null;
+ applyObject(ball,item,1,null);
 }
 function isLocallyControlledP2(player){
  const Controller=window.__BSO_PlayerController2;
  if(side!==2||!player||!player.controller||!Controller)return false;
  return player.controller instanceof Controller||player.controller.constructor===Controller;
 }
+function lockPresentationClient(core){
+ if(side!==2||!core)return;
+ const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
+ for(const player of players){
+  if(typeof player.update==="function"&&!player.__bsoPresentationUpdateLocked){
+   player.__bsoNativeUpdate=player.update;
+   player.update=function(){};
+   player.__bsoPresentationUpdateLocked=true;
+  }
+  // Set Nape space directly. removeFromPhysics() also changes gameplay flags and
+  // hides graphics, which a presentation client must not do.
+  if(player.body&&player.body.space!==null)player.body.space=null;
+ }
+ if(core.ball&&core.ball.body&&core.ball.body.space!==null)core.ball.body.space=null;
+}
 function applySnapshot(core,s,dt,applyUi){
  if(!s||!Array.isArray(s.objects))return;
- const alpha=1-Math.exp(-Math.max(1,Math.min(50,Number(dt)||16.67))/65);
+ // A 40 Hz authoritative stream is applied directly; don't add another 65 ms
+ // follow-behind filter on top of network delay.
+ const alpha=side===2?1:1-Math.exp(-Math.max(1,Math.min(50,Number(dt)||16.67))/65);
  const localPlayers=[...(core.playersLeft||[]),...(core.playersRight||[])];
  const localP2=localPlayers.find(isLocallyControlledP2)||null;
  diag.localPlayerFound=!!localP2;
  diag.localPlayerY=localP2&&localP2.body?Math.round(localP2.body.position.y):null;
  diag.localPlayerGrounded=localP2?!!localP2.isGrounded:null;
  diag.localPlayerVy=localP2&&localP2.body?Math.round(localP2.body.velocity.y):null;
- // Correct ball state and possession first; ball.setState() updates native controllers.
+ // Host ball state and ownership are applied before player animations.
  if(core.ball&&s.ball)applyBall(core,s.ball,alpha,localPlayers);
  for(const item of s.objects){
   const player=Number.isFinite(item.playerNo)&&Number.isFinite(item.side)?localPlayers.find(p=>p&&p.playerNo===item.playerNo&&p.SIDE===item.side):null;
   if(!player)continue;
-  // P2 predicts their own transform locally; possession is reconciled above.
-  if(isLocallyControlledP2(player))continue;
-  applyObject(player,item,alpha,localP2);
+  // Both players are display-only on P2; their positions and actions come from P1.
+  applyObject(player,item,alpha,null);
  }
+ lockPresentationClient(core);
  if(applyUi){
   core.isPlaying=!!s.playing;core.isPaused=!!s.paused;core.isScored=!!s.scored;core.isWaiting=!!s.waiting;
   core.isEnd=!!s.ended;core.isOvertime=!!s.overtime;core.isSuperShot=!!s.superShot;core.isAlleyOop=!!s.alleyOop;
@@ -231,9 +280,14 @@ function install(){
  const original=C.prototype.update;
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
+  if(side===2){
+   installBallOwnerTracking(this);
+   lockPresentationClient(this);
+  }else installBallOwnerTracking(this);
   const coreStart=performance.now();
   original.call(this,dt);
   const coreEnd=performance.now();
+  if(side===2)lockPresentationClient(this);
   if(!this.objects||!this.objects.length)return;
   if(side===1){
    const now=Date.now();
