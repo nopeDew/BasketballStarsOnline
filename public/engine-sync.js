@@ -70,6 +70,7 @@ function readObject(o,index,typeIndex,core){
  if(Number.isFinite(o&&o.playerNo))item.playerNo=o.playerNo;
  if(g){item.x=clamp(g.x);item.y=clamp(g.y);item.r=clamp(g.rotation);item.visible=g.visible!==false;item.alpha=clamp(g.alpha);}
  const body=readBody(b);if(body)item.body=body;
+ if(b)item.physicsActive=b.space!==null;
  if(typeof o.state==="string")item.state=o.state;
  if(typeof o.withBall==="boolean")item.withBall=o.withBall;
  if(typeof o.isGrounded==="boolean")item.grounded=o.isGrounded;
@@ -104,19 +105,23 @@ function setVec(vec,x,y){
  if(typeof vec.setxy==="function")vec.setxy(x,y);
  else {if(Number.isFinite(x))vec.x=x;if(Number.isFinite(y))vec.y=y;}
 }
-function applyObject(o,item,alpha){
+function applyObject(o,item,alpha,coreLocalPlayer){
  if(!o||!item)return;
  const b=o.body,g=o.graphic,p=item.body;
  // Blend authoritative corrections into Player 2's local prediction instead of
  // teleporting every body to a new 30 Hz snapshot.
  if(b&&p){
+  if(typeof item.physicsActive==="boolean"&&o!==coreLocalPlayer&&o.theSpace){
+   if(!item.physicsActive&&b.space!==null)b.space=null;
+   else if(item.physicsActive&&b.space===null)b.space=o.theSpace;
+  }
   const pos=b.position,vel=b.velocity;
   const x=pos&&Number.isFinite(pos.x)?pos.x:p.x;
   const y=pos&&Number.isFinite(pos.y)?pos.y:p.y;
   const vx=vel&&Number.isFinite(vel.x)?vel.x:p.vx;
   const vy=vel&&Number.isFinite(vel.y)?vel.y:p.vy;
-  setVec(b.position,x+(p.x-x)*alpha,y+(p.y-y)*alpha);
-  setVec(b.velocity,vx+(p.vx-vx)*alpha,vy+(p.vy-vy)*alpha);
+  setVec(b.position,x+(p.x-x)*alpha,item.grounded===true?p.y:y+(p.y-y)*alpha);
+  setVec(b.velocity,vx+(p.vx-vx)*alpha,item.grounded===true?p.vy:vy+(p.vy-vy)*alpha);
   try{
    b.rotation=Number.isFinite(b.rotation)?b.rotation+(p.rotation-b.rotation)*alpha:p.rotation;
    b.angularVel=Number.isFinite(b.angularVel)?b.angularVel+(p.angularVel-b.angularVel)*alpha:p.angularVel;
@@ -124,20 +129,17 @@ function applyObject(o,item,alpha){
  }
  if(g){
   if(Number.isFinite(item.x))g.x=Number.isFinite(g.x)?g.x+(item.x-g.x)*alpha:item.x;
-  if(Number.isFinite(item.y))g.y=Number.isFinite(g.y)?g.y+(item.y-g.y)*alpha:item.y;
+  if(Number.isFinite(item.y))g.y=item.grounded===true?item.y:(Number.isFinite(g.y)?g.y+(item.y-g.y)*alpha:item.y);
   if(Number.isFinite(item.r))g.rotation=Number.isFinite(g.rotation)?g.rotation+(item.r-g.rotation)*alpha:item.r;
   if(typeof item.visible==="boolean")g.visible=item.visible;
   if(Number.isFinite(item.alpha))g.alpha=item.alpha;
  }
- if(typeof item.withBall==="boolean"&&typeof o.takeBallInHands==="function"&&typeof o.freeBall==="function"&&o.withBall!==item.withBall){
-  if(item.withBall)o.takeBallInHands();
-  else o.freeBall();
- }
- if(typeof item.state==="string"&&(o.state!==item.state||(Number.isFinite(item.side)&&o.SIDE!==item.side))){
-  // Possession can switch teams while the ball remains in the same "inHands" state.
-  if(typeof o.playState==="function"){try{o.playState(item.state)}catch(_){o.state=item.state;}}
-  else if(typeof o.setState==="function"){try{o.setState(item.state,item.side===undefined?2:item.side,item.playerNo===undefined?0:item.playerNo,true)}catch(_){o.state=item.state;}}
-  else o.state=item.state;
+ if(typeof item.state==="string"&&o.state!==item.state){
+  // The transmitted state is already the exact DragonBones animation key (e.g. idle_wb).
+  try{
+   o.prevState=o.state;o.state=item.state;
+   if(o.armature&&o.armature.animation&&typeof o.armature.animation.gotoAndPlay==="function")o.armature.animation.gotoAndPlay(item.state);
+  }catch(_){o.state=item.state;}
  }
  if(typeof item.grounded==="boolean")o.isGrounded=item.grounded;
  for(const flag of ["canAct","canTakeInHands","canDoAction","isBlockedOrPump","isSuperShot","needBlock","isUnderEmotion","readyForDash","readyForSuper","attackJump","canThrow","isRestart"]){if(typeof item[flag]==="boolean")o[flag]=item[flag];}
@@ -145,13 +147,26 @@ function applyObject(o,item,alpha){
  if(typeof item.waiting==="boolean")o.isWaiting=item.waiting;
  // Preserve the original game's actual possession flag, not just the ball's visual position.
 }
-function applyBall(core,item,alpha){
+function applyBall(core,item,alpha,players){
  const ball=core.ball,b=ball&&ball.body;
  if(!ball||!b||!item)return;
  const holderNo=Number.isFinite(item.playerNo)?item.playerNo:0;
- if(typeof item.state==="string"&&typeof ball.setState==="function"&&(ball.state!==item.state||ball.SIDE!==item.side||ball.__bsoHolderNo!==holderNo)){
-  ball.setState(item.state,item.side===undefined?2:item.side,holderNo,true);
-  ball.__bsoHolderNo=holderNo;
+ const holderSide=Number.isFinite(item.side)?item.side:null;
+ const hasHolder=item.state==="inHands"&&holderSide!==null;
+ const possessionMismatch=(players||[]).some(player=>{
+  const expected=!!(hasHolder&&player.SIDE===holderSide&&player.playerNo===holderNo);
+  return !!player.withBall!==expected;
+ });
+ const stateMismatch=ball.state!==item.state||ball.SIDE!==holderSide||ball.__bsoHolderSide!==holderSide||ball.__bsoHolderNo!==holderNo;
+ // Re-run the original game callbacks if either the ball state or player flags drift.
+ if((stateMismatch||possessionMismatch)&&typeof ball.setState==="function"&&typeof item.state==="string")
+  ball.setState(item.state,holderSide===null?2:holderSide,holderNo,true);
+ ball.__bsoHolderSide=holderSide;ball.__bsoHolderNo=holderNo;
+ // ballInHands marks the new holder but does not clear a stale previous holder.
+ for(const player of players||[]){
+  const expected=!!(hasHolder&&player.SIDE===holderSide&&player.playerNo===holderNo);
+  if(expected&&!player.withBall&&typeof player.takeBallInHands==="function")player.takeBallInHands();
+  else if(!expected&&player.withBall&&typeof player.freeBall==="function")player.freeBall();
  }
  let transitioned=false;
  if(item.physicsSpace===0&&b.space!==null&&typeof ball.removeFromPhysics==="function"){
@@ -161,7 +176,7 @@ function applyBall(core,item,alpha){
  }else if(item.physicsSpace===2&&ball.space2&&b.space!==ball.space2){
   b.space=ball.space2;ball.updateGraphic();ball.graphic.visible=true;transitioned=true;
  }
- applyObject(ball,item,transitioned?1:alpha);
+ applyObject(ball,item,transitioned?1:alpha,null);
 }
 function isLocallyControlledP2(player){
  const Controller=window.__BSO_PlayerController2;
@@ -177,18 +192,15 @@ function applySnapshot(core,s,dt,applyUi){
  diag.localPlayerY=localP2&&localP2.body?Math.round(localP2.body.position.y):null;
  diag.localPlayerGrounded=localP2?!!localP2.isGrounded:null;
  diag.localPlayerVy=localP2&&localP2.body?Math.round(localP2.body.velocity.y):null;
+ // Correct ball state and possession first; ball.setState() updates native controllers.
+ if(core.ball&&s.ball)applyBall(core,s.ball,alpha,localPlayers);
  for(const item of s.objects){
   const player=Number.isFinite(item.playerNo)&&Number.isFinite(item.side)?localPlayers.find(p=>p&&p.playerNo===item.playerNo&&p.SIDE===item.side):null;
   if(!player)continue;
-  // Player 2's own character runs the original local physics and controller.
-  // Correcting its transform/grounded flag after every step fights Nape's
-  // gravity and collision callbacks, which can leave the player floating.
+  // P2 predicts their own transform locally; possession is reconciled above.
   if(isLocallyControlledP2(player))continue;
-  applyObject(player,item,alpha);
+  applyObject(player,item,alpha,localP2);
  }
- // The ball has its own stable reference on MainGameCore; use it even if object
- // creation order differs between the two browser simulations.
- if(core.ball&&s.ball)applyBall(core,s.ball,alpha);
  if(applyUi){
   core.isPlaying=!!s.playing;core.isPaused=!!s.paused;core.isScored=!!s.scored;core.isWaiting=!!s.waiting;
   core.isEnd=!!s.ended;core.isOvertime=!!s.overtime;core.isSuperShot=!!s.superShot;core.isAlleyOop=!!s.alleyOop;
