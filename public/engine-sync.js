@@ -5,7 +5,7 @@ const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
 let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
-const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null};
+const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
@@ -48,6 +48,9 @@ function startDiagnostics(){
     "Last sequence: "+diag.lastSequence,
     "Remote input packets: "+remote,
     "P2 controller: "+(controller?"active":"not reporting"),
+    "Host ball state: "+(diag.hostBallState||"unknown"),
+    "Host ball holder: "+(diag.hostHolder||"none"),
+    "Local ball holders: "+(diag.localHolders||"none"),
     "Local P2 avatar: "+(diag.localPlayerFound?"prediction active":"not found"),
     "Local avatar Y: "+(diag.localPlayerY===null?"n/a":diag.localPlayerY),
     "Grounded: "+(diag.localPlayerGrounded===null?"n/a":diag.localPlayerGrounded),
@@ -90,7 +93,10 @@ function makeSnapshot(core){
  const inv=window.__BSO_Inventory,md=inv&&inv.instance&&inv.instance.matchData;
  const holder=[...(core.playersLeft||[]),...(core.playersRight||[])].find(p=>p&&p.withBall);
  const ball=core.ball?readObject(core.ball,-1,0,core):null;
- if(ball&&holder){ball.side=holder.SIDE;ball.playerNo=holder.playerNo;}
+ if(ball){
+  ball.holder=holder?{side:holder.SIDE,playerNo:holder.playerNo}:null;
+  if(holder){ball.side=holder.SIDE;ball.playerNo=holder.playerNo;}
+ }
  return {
   sequence:++snapshotSequence,
   objects,
@@ -150,17 +156,21 @@ function applyObject(o,item,alpha,coreLocalPlayer){
 function applyBall(core,item,alpha,players){
  const ball=core.ball,b=ball&&ball.body;
  if(!ball||!b||!item)return;
- const holderNo=Number.isFinite(item.playerNo)?item.playerNo:0;
- const holderSide=Number.isFinite(item.side)?item.side:null;
- const hasHolder=item.state==="inHands"&&holderSide!==null;
+ const holder=item.holder&&Number.isFinite(item.holder.side)&&Number.isFinite(item.holder.playerNo)?item.holder:null;
+ const holderNo=holder?holder.playerNo:-1;
+ const holderSide=holder?holder.side:null;
+ const appliedHolderNo=holder?holder.playerNo:0;
+ const hasHolder=item.state==="inHands"&&!!holder;
+ diag.hostBallState=item.state||"unknown";
+ diag.hostHolder=hasHolder?"side "+holderSide+" / player "+holderNo:"none";
  const possessionMismatch=(players||[]).some(player=>{
   const expected=!!(hasHolder&&player.SIDE===holderSide&&player.playerNo===holderNo);
   return !!player.withBall!==expected;
  });
- const stateMismatch=ball.state!==item.state||ball.SIDE!==holderSide||ball.__bsoHolderSide!==holderSide||ball.__bsoHolderNo!==holderNo;
+ const stateMismatch=ball.state!==item.state||(holderSide!==null&&ball.SIDE!==holderSide)||ball.__bsoHolderSide!==holderSide||ball.__bsoHolderNo!==holderNo;
  // Re-run the original game callbacks if either the ball state or player flags drift.
  if((stateMismatch||possessionMismatch)&&typeof ball.setState==="function"&&typeof item.state==="string")
-  ball.setState(item.state,holderSide===null?2:holderSide,holderNo,true);
+  ball.setState(item.state,holderSide===null?2:holderSide,appliedHolderNo,true);
  ball.__bsoHolderSide=holderSide;ball.__bsoHolderNo=holderNo;
  // ballInHands marks the new holder but does not clear a stale previous holder.
  for(const player of players||[]){
@@ -168,6 +178,7 @@ function applyBall(core,item,alpha,players){
   if(expected&&!player.withBall&&typeof player.takeBallInHands==="function")player.takeBallInHands();
   else if(!expected&&player.withBall&&typeof player.freeBall==="function")player.freeBall();
  }
+ diag.localHolders=(players||[]).filter(player=>player.withBall).map(player=>"side "+player.SIDE+" / player "+player.playerNo).join(", ")||"none";
  let transitioned=false;
  if(item.physicsSpace===0&&b.space!==null&&typeof ball.removeFromPhysics==="function"){
   ball.removeFromPhysics();transitioned=true;
