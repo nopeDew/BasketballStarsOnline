@@ -270,8 +270,9 @@ io.on("connection", socket => {
     if (!room || !room.started || !player || player.side !== 1 || !state || !Array.isArray(state.objects)) return;
     if (state.objects.length > 250) return;
     const opponent = room.players.find(p => p.side === 2 && p.socketId);
-    // Drop obsolete state under network pressure instead of building a queue behind live gameplay.
-    if (opponent) io.to(opponent.socketId).volatile.emit("engineState", state);
+    // Preserve every authoritative snapshot. Volatile delivery was dropping a large
+    // fraction of the 40 Hz stream and causing visible stutter on Player 2.
+    if (opponent) io.to(opponent.socketId).emit("engineState", state);
   });
 
   socket.on("engineLeave", acknowledge => {
