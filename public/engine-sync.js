@@ -346,6 +346,10 @@ function applySnapshot(core,s,dt,applyUi){
   core.isEnd=!!s.ended;core.isOvertime=!!s.overtime;core.isSuperShot=!!s.superShot;core.isAlleyOop=!!s.alleyOop;
   if(Number.isFinite(s.matchTime))core.matchTime=s.matchTime;
   if(Number.isFinite(s.endTime))core.endTime=s.endTime;
+  // P2 no longer runs MainGameCore.update(), so mirror the host's visible clock directly.
+  if(s.playing&&!s.waiting&&!s.scored&&!s.ended&&core.timer&&typeof core.timer.process==="function"&&core.matchTime<core.endTime){
+   core.timer.process(core.matchTime);
+  }
   const inv=window.__BSO_Inventory,md=inv&&inv.instance&&inv.instance.matchData;
   if(md&&Array.isArray(s.scores)&&s.scores.length===2){
    md.matchScore[0]=s.scores[0];md.matchScore[1]=s.scores[1];
