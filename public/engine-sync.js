@@ -29,14 +29,10 @@ function readObject(o,index,typeIndex,core){
  return item;
 }
 function makeSnapshot(core){
- const counts=Object.create(null);
- // The ball has a dedicated stable reference below. Do not serialize it a second time via core.objects.
- const objects=(core.objects||[]).filter(o=>o!==core.ball).map((o,i)=>{
-  const type=Number.isFinite(o&&o.objType)?o.objType:-1;
-  const typeIndex=counts[type]||0;counts[type]=typeIndex+1;
-  // Static decoration does not need network replication. Keep physics objects and players.
-  return o&&(o.body||o.isHuman===true||typeof o.withBall==="boolean")?readObject(o,i,typeIndex,core):null;
- }).filter(Boolean).slice(0,120);
+ // The 1v1 match only needs authoritative player bodies plus the dedicated ball.
+ // Avoid replicating every court/effect body every frame; it adds work without helping control.
+ const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
+ const objects=players.map((o,i)=>readObject(o,i,0,core)).filter(Boolean);
  const inv=window.__BSO_Inventory,md=inv&&inv.instance&&inv.instance.matchData;
  const holder=[...(core.playersLeft||[]),...(core.playersRight||[])].find(p=>p&&p.withBall);
  const ball=core.ball?readObject(core.ball,-1,0,core):null;
@@ -117,15 +113,10 @@ function applyBall(core,item,alpha){
 function applySnapshot(core,s,dt,applyUi){
  if(!s||!Array.isArray(s.objects))return;
  const alpha=1-Math.exp(-Math.max(1,Math.min(50,Number(dt)||16.67))/65);
- const byType=Object.create(null);
- for(const o of core.objects||[]){
-  const type=Number.isFinite(o&&o.objType)?o.objType:-1;
-  (byType[type]||(byType[type]=[])).push(o);
- }
+ const localPlayers=[...(core.playersLeft||[]),...(core.playersRight||[])];
  for(const item of s.objects){
-  const player=Number.isFinite(item.playerNo)&&Number.isFinite(item.side)?[...(core.playersLeft||[]),...(core.playersRight||[])].find(p=>p&&p.playerNo===item.playerNo&&p.SIDE===item.side):null;
-  const typed=item.type!==null&&byType[item.type]&&byType[item.type][item.typeIndex];
-  applyObject(player||typed,item,alpha);
+  const player=Number.isFinite(item.playerNo)&&Number.isFinite(item.side)?localPlayers.find(p=>p&&p.playerNo===item.playerNo&&p.SIDE===item.side):null;
+  if(player)applyObject(player,item,alpha);
  }
  // The ball has its own stable reference on MainGameCore; use it even if object
  // creation order differs between the two browser simulations.
