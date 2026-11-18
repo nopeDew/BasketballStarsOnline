@@ -466,6 +466,8 @@ function applyServerWorldState(core,s){
    const has=typeof player.body.shapes.has==="function"&&player.body.shapes.has(player.blockBody);
    if(item.blockBody&&!has&&typeof player.body.shapes.add==="function")player.body.shapes.add(player.blockBody);
    if(!item.blockBody&&has&&typeof player.body.shapes.remove==="function")player.body.shapes.remove(player.blockBody);
+   if(item.blockBody&&Number.isFinite(player.blockMass))player.body.gravMass=player.blockMass;
+   else if(!item.blockBody&&Number.isFinite(player.baseMass))player.body.gravMass=player.baseMass;
   }
  }
  if(s.scoreEvent&&Number.isFinite(s.scoreEvent.id)&&s.scoreEvent.id>lastScoreEventId){
