@@ -12,6 +12,8 @@ const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, "public");
 const ENGINE_DIR = path.join(__dirname, "engine-source");
 const rooms = new Map();
+// A short transport interruption should not immediately destroy a live match.
+const DISCONNECT_GRACE_MS = 30000;
 
 app.use(express.static(PUBLIC_DIR));
 app.get("/health", (_req, res) => {
@@ -123,12 +125,16 @@ function findPlayer(room, socket) {
   return room && room.players.find(p => p.socketId === socket.id);
 }
 function attachPlayer(room, player, socket) {
+  if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+  player.disconnectTimer = null;
   player.socketId = socket.id;
   socket.data.engineRoom = room.code;
   socket.data.engineSession = player.sessionId;
   socket.join(room.code);
 }
 function removePlayer(room, player) {
+  if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+  player.disconnectTimer = null;
   room.players = room.players.filter(p => p !== player);
   if (!room.players.length) rooms.delete(room.code);
   else {
@@ -277,14 +283,34 @@ io.on("connection", socket => {
     if (typeof acknowledge === "function") acknowledge({ ok: true });
   });
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", reason => {
     const room = rooms.get(socket.data.engineRoom);
     if (!room) return;
     const player = room.players.find(p => p.socketId === socket.id);
     if (!player) return;
-    // A disconnected player has left the match. Remove them and send the remaining
-    // player through the same lobby-return path as an explicit leave.
-    removePlayer(room, player);
+
+    // Mark the slot offline but retain the room and match state temporarily.
+    // Socket.IO will reconnect automatically and engineResume will reclaim this
+    // same session/side. Ignore stale disconnect callbacks from replaced sockets.
+    player.socketId = null;
+    updateRoom(room);
+
+    const opponent = room.players.find(p => p !== player && p.socketId);
+    if (opponent) {
+      io.to(opponent.socketId).emit("engineOpponentConnectionLost", {
+        gracePeriodMs: DISCONNECT_GRACE_MS,
+        reason: String(reason || "connection lost")
+      });
+    }
+
+    if (player.disconnectTimer) clearTimeout(player.disconnectTimer);
+    player.disconnectTimer = setTimeout(() => {
+      // A reconnect clears the timer in attachPlayer. Only expire the same
+      // still-offline player in the same room.
+      if (rooms.get(room.code) !== room || !room.players.includes(player) || player.socketId) return;
+      player.disconnectTimer = null;
+      removePlayer(room, player);
+    }, DISCONNECT_GRACE_MS);
   });
 });
 
