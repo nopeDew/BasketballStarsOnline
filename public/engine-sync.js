@@ -5,7 +5,7 @@ const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 window.__BSO_HOST_PRESENTATION=side===2;
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
-let latest=null,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
+let latest=null,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0,lastScoreEventId=0;
 let ownerTrackingInstalled=false;
 const snapshotBuffer=[];
 const INTERPOLATION_DELAY_MS=25;
@@ -54,8 +54,8 @@ function startDiagnostics(){
     "Game updates/sec: "+diag.gameUps,
     "Core update: "+diag.coreMs+" ms",
     "Network sync: "+diag.syncMs+" ms",
-    "Snapshots sent/sec: "+diag.sentHz,
-    "Snapshots received/sec: "+diag.packetHz,
+    "Movement updates sent/sec: "+diag.sentHz,
+    "Server physics snapshots/sec: "+diag.packetHz,
     "Socket: "+(socket.connected?"connected":"disconnected")+" · "+((socket.io&&socket.io.engine&&socket.io.engine.transport&&socket.io.engine.transport.name)||"connecting"),
     "Transport writable: "+!!(socket.io&&socket.io.engine&&socket.io.engine.transport&&socket.io.engine.transport.writable),
     "Last snapshot age: "+(diag.packetAgeMs===null?"none":diag.packetAgeMs+" ms"),
@@ -233,28 +233,70 @@ function applyBall(core,item,alpha,players){
  diag.localHolders=(players||[]).filter(player=>player.withBall).map(player=>"side "+player.SIDE+" / player "+player.playerNo).join(", ")||"none";
  // Player 2 never simulates the ball locally. Keep its body out of both Nape spaces
  // while continuing to render the authoritative host position and velocity.
- // Keep the ball in local physics; host snapshots reconcile its authoritative state.
+ // Server owns the ball's Nape body; the browser only mirrors its transform.
+ if(b.space!==null)b.space=null;
  applyObject(ball,item,1,null);
 }
-function isLocallyControlledP2(player){
- const Controller=window.__BSO_PlayerController2;
- if(side!==2||!player||!player.controller||!Controller)return false;
- return player.controller instanceof Controller||player.controller.constructor===Controller;
+function isLocalPlayer(player){
+ if(!player)return false;
+ const Controller=side===1?window.__BSO_PlayerController:window.__BSO_PlayerController2;
+ if(Controller&&player.controller&&(player.controller instanceof Controller||player.controller.constructor===Controller))return true;
+ const expectedSide=side===1?1:-1;
+ return player.SIDE===expectedSide&&Number(player.playerNo)===0;
 }
-function lockPresentationClient(core){
- if(side!==2||!core)return;
- const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
- for(const player of players){
-  if(typeof player.update==="function"&&!player.__bsoPresentationUpdateLocked){
-   player.__bsoNativeUpdate=player.update;
-   player.update=function(){};
-   player.__bsoPresentationUpdateLocked=true;
-  }
-  // Set Nape space directly. removeFromPhysics() also changes gameplay flags and
-  // hides graphics, which a presentation client must not do.
-  if(player.body&&player.body.space!==null)player.body.space=null;
+function installServerBallAuthority(core){
+ const ball=core&&core.ball;
+ if(!ball||!ball.body)return;
+ const proto=Object.getPrototypeOf(ball);
+ if(!proto||proto.__bsoServerBallAuthorityInstalled)return;
+ const localGameSide=side===1?1:-1;
+ const send=action=>{if(socket.connected)socket.emit("engineBallAction",action)};
+ const localPlayer=()=>[...(core.playersLeft||[]),...(core.playersRight||[])].find(isLocalPlayer)||null;
+ // Pickup is resolved by the server's player-hand sensor.
+ proto.takeInHands=function(){return false};
+ // Ball launches are commands. Only the controlling side sends them.
+ proto.shoot=function(gameSide,x,y,velocityX,accuracy){
+  if(Number(gameSide)!==localGameSide)return;
+  const p=localPlayer();
+  send({type:"shoot",playerNo:p?p.playerNo:0,x,y,playerVelocityX:velocityX,accuracy,pointOfThrow:p&&p.pointOfThrow});
+ };
+ proto.dunk=function(gameSide,chance){
+  if(Number(gameSide)!==localGameSide)return false;
+  const p=localPlayer();
+  send({type:"dunk",playerNo:p?p.playerNo:0,chance});
+  return true;
+ };
+ proto.alleyOop=function(gameSide,x,y,player){
+  if(Number(gameSide)!==localGameSide)return;
+  const p=player&&Number.isFinite(player.playerNo)?player:localPlayer();
+  send({type:"alleyOop",playerNo:p?p.playerNo:0,x,y});
+ };
+ proto.fromHands=function(position,direction){
+  if(Number(this.SIDE)!==localGameSide)return;
+  send({type:"fromHands",x:position&&position.x,y:position&&position.y,direction});
+ };
+ // Steal is relayed from MainGameCore.steal so only the locally controlled
+ // player can originate it; the server validates range and possession.
+ proto.applySteal=function(){};
+ // Never reinsert the local visual ball into either browser's physics space.
+ proto.returnToPhysics=function(){if(this.body&&this.body.space!==null)this.body.space=null};
+ proto.toPhysics2=function(){if(this.body&&this.body.space!==null)this.body.space=null};
+ proto.removeFromPhysics=function(){if(this.body&&this.body.space!==null)this.body.space=null};
+ proto.isInGame=function(){return !["inHands","score"].includes(window.__BSO_SERVER_BALL_STATE||this.state)};
+ proto.__bsoServerBallAuthorityInstalled=true;
+ const C=window.__BSO_MainGameCore;
+ if(C&&C.prototype&&typeof C.prototype.steal==="function"&&!C.prototype.__bsoServerStealRelayInstalled){
+  const nativeSteal=C.prototype.steal;
+  C.prototype.steal=function(gameSide){
+   if(Number(gameSide)===localGameSide){
+    const p=localPlayer();
+    send({type:"steal",playerNo:p?p.playerNo:0});
+   }
+   return nativeSteal.apply(this,arguments);
+  };
+  C.prototype.__bsoServerStealRelayInstalled=true;
  }
- if(core.ball&&core.ball.body&&core.ball.body.space!==null)core.ball.body.space=null;
+ console.info("[BSO] Ball pickup, flight, blocks and scoring are server-authoritative.");
 }
 function visualValues(item){
  if(!item)return null;
@@ -270,7 +312,11 @@ function visualValues(item){
   vy:Number.isFinite(b.vy)?b.vy:0,
   angularVel:Number.isFinite(b.angularVel)?b.angularVel:0,
   scaleX:Number.isFinite(item.scaleX)?item.scaleX:1,
-  scaleY:Number.isFinite(item.scaleY)?item.scaleY:1
+  scaleY:Number.isFinite(item.scaleY)?item.scaleY:1,
+  state:typeof item.state==="string"?item.state:null,
+  visible:typeof item.visible==="boolean"?item.visible:true,
+  alpha:Number.isFinite(item.alpha)?item.alpha:1,
+  grounded:typeof item.grounded==="boolean"?item.grounded:null
  };
 }
 function cacheSnapshotVisuals(state){
@@ -283,7 +329,7 @@ function cacheSnapshotVisuals(state){
 }
 function lerp(a,b,t){return a+(b-a)*t}
 function renderInterpolatedSnapshot(core,now){
- if(side!==2||!core||!snapshotBuffer.length)return;
+ if(!core||!snapshotBuffer.length)return;
  const targetTime=now-INTERPOLATION_DELAY_MS;
  let left=snapshotBuffer[0],right=left;
  let extrapolationMs=0;
@@ -308,18 +354,18 @@ function renderInterpolatedSnapshot(core,now){
    y:Number.isFinite(first.y)&&Number.isFinite(second.y)?lerp(first.y,second.y,t)+second.vy*extrapolate:null,
    r:Number.isFinite(first.r)&&Number.isFinite(second.r)?lerp(first.r,second.r,t)+second.angularVel*extrapolate:null,
    scaleX:lerp(first.scaleX,second.scaleX,t),
-   scaleY:lerp(first.scaleY,second.scaleY,t)
+   scaleY:lerp(first.scaleY,second.scaleY,t),
+   state:second.state,visible:second.visible,alpha:second.alpha,grounded:second.grounded
   };
  };
  const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
- const localP2=side===2?players.find(isLocallyControlledP2):null;
+ const localPlayer=players.find(isLocalPlayer)||null;
  for(const player of players){
-  if(localP2&&player===localP2)continue;
+  if(localPlayer&&player===localPlayer)continue;
   const graphic=player&&player.graphic;
   if(!graphic)continue;
   const key=player.SIDE+":"+player.playerNo;
-  const a=left.visuals.players.get(key);
-  const b=right.visuals.players.get(key);
+  const a=left.visuals.players.get(key),b=right.visuals.players.get(key);
   if(!a&&!b)continue;
   const value=predict(a,b);
   if(!value)continue;
@@ -330,6 +376,12 @@ function renderInterpolatedSnapshot(core,now){
    if(Number.isFinite(value.scaleX))graphic.scale.x=value.scaleX;
    if(Number.isFinite(value.scaleY))graphic.scale.y=value.scaleY;
   }
+  if(typeof value.visible==="boolean")graphic.visible=value.visible;
+  if(Number.isFinite(value.alpha))graphic.alpha=value.alpha;
+  if(typeof value.state==="string"&&player.state!==value.state&&typeof player.playState==="function"){
+   try{player.playState(value.state)}catch(_){}
+  }
+  if(typeof value.grounded==="boolean")player.isGrounded=value.grounded;
  }
  const ballGraphic=core.ball&&core.ball.graphic;
  if(ballGraphic){
@@ -340,12 +392,13 @@ function renderInterpolatedSnapshot(core,now){
     if(Number.isFinite(value.x))ballGraphic.x=value.x;
     if(Number.isFinite(value.y))ballGraphic.y=value.y;
     if(Number.isFinite(value.r))ballGraphic.rotation=value.r;
+    ballGraphic.visible=value.visible;
+    ballGraphic.alpha=value.alpha;
    }
   }
  }
 }
 function installGameplayRenderer(){
- if(side!==2)return true;
  const G=window.__BSO_GameplayState;
  if(!G||!G.prototype||typeof G.prototype.update!=="function"||typeof G.prototype.preRender!=="function")return false;
  if(G.prototype.__bsoPresentationRenderInstalled)return true;
@@ -369,80 +422,83 @@ function installGameplayRenderer(){
   return originalPreRender.apply(this,arguments);
  };
  G.prototype.__bsoPresentationRenderInstalled=true;
- diag.renderHook="active · preRender";
+ diag.renderHook="active · server preRender";
  console.info("[BSO] Player 2 predicts its own avatar locally; host corrects opponent and ball.");
  return true;
 }
-function applySnapshot(core,s,dt,applyUi){
+function applyServerWorldState(core,s){
  if(!s||!Array.isArray(s.objects))return;
- // A 40 Hz authoritative stream is applied directly; don't add another 65 ms
- // follow-behind filter on top of network delay.
- const alpha=side===2?1:1-Math.exp(-Math.max(1,Math.min(50,Number(dt)||16.67))/65);
- const localPlayers=[...(core.playersLeft||[]),...(core.playersRight||[])];
- const localP2=localPlayers.find(isLocallyControlledP2)||null;
- diag.localPlayerFound=!!localP2;
- diag.localPlayerY=localP2&&localP2.body?Math.round(localP2.body.position.y):null;
- diag.localPlayerGrounded=localP2?!!localP2.isGrounded:null;
- diag.localPlayerVy=localP2&&localP2.body?Math.round(localP2.body.velocity.y):null;
- // Host ball state and ownership are applied before player animations.
- if(core.ball&&s.ball)applyBall(core,s.ball,alpha,localPlayers);
- for(const item of s.objects){
-  const player=Number.isFinite(item.playerNo)&&Number.isFinite(item.side)?localPlayers.find(p=>p&&p.playerNo===item.playerNo&&p.SIDE===item.side):null;
-  if(!player)continue;
-  // P2 predicts its own avatar immediately; only correct the remote opponent.
-  if(side===2&&player===localP2)continue;
-  applyObject(player,item,alpha,null);
- }
- if(applyUi){
-  core.isPlaying=!!s.playing;core.isPaused=!!s.paused;core.isScored=!!s.scored;core.isWaiting=!!s.waiting;
-  core.isEnd=!!s.ended;core.isOvertime=!!s.overtime;core.isSuperShot=!!s.superShot;core.isAlleyOop=!!s.alleyOop;
-  if(Number.isFinite(s.matchTime))core.matchTime=s.matchTime;
-  if(Number.isFinite(s.endTime))core.endTime=s.endTime;
-  // P2 no longer runs MainGameCore.update(), so mirror the host's visible clock directly.
-  if(s.playing&&!s.waiting&&!s.scored&&!s.ended&&core.timer&&typeof core.timer.process==="function"&&core.matchTime<core.endTime){
-   core.timer.process(core.matchTime);
+ const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
+ const localPlayer=players.find(isLocalPlayer)||null;
+ diag.localPlayerFound=!!localPlayer;
+ diag.localPlayerY=localPlayer&&localPlayer.body?Math.round(localPlayer.body.position.y):null;
+ diag.localPlayerGrounded=localPlayer?!!localPlayer.isGrounded:null;
+ diag.localPlayerVy=localPlayer&&localPlayer.body?Math.round(localPlayer.body.velocity.y):null;
+ window.__BSO_SERVER_BALL_STATE=s.ballState||(s.ball&&s.ball.state)||"unknown";
+ if(core.ball&&s.ball)applyBall(core,s.ball,1,players);
+ if(s.scoreEvent&&Number.isFinite(s.scoreEvent.id)&&s.scoreEvent.id>lastScoreEventId){
+  lastScoreEventId=s.scoreEvent.id;
+  if(typeof core.processMatchProcessor==="function"){
+   core.processMatchProcessor(s.scoreEvent.basketSide,s.scoreEvent.points,s.scoreEvent.isHuman,s.scoreEvent.throwType);
   }
-  const inv=window.__BSO_Inventory,md=inv&&inv.instance&&inv.instance.matchData;
-  if(md&&Array.isArray(s.scores)&&s.scores.length===2){
-   md.matchScore[0]=s.scores[0];md.matchScore[1]=s.scores[1];
-   if(core.infoPanel&&typeof core.infoPanel.updateScore==="function")core.infoPanel.updateScore(s.scores[0],s.scores[1]);
-   if(core.timer&&typeof core.timer.updateScore==="function"){core.timer.updateScore(1,s.scores[0]);core.timer.updateScore(-1,s.scores[1]);}
+ }
+ core.isAlleyOop=s.ballState==="alleyOop";
+ const inv=window.__BSO_Inventory,md=inv&&inv.instance&&inv.instance.matchData;
+ if(md&&Array.isArray(s.scores)&&s.scores.length===2){
+  md.matchScore[0]=s.scores[0];md.matchScore[1]=s.scores[1];
+  if(core.infoPanel&&typeof core.infoPanel.updateScore==="function")core.infoPanel.updateScore(s.scores[0],s.scores[1]);
+  if(core.timer&&typeof core.timer.updateScore==="function"){
+   core.timer.updateScore(1,s.scores[0]);core.timer.updateScore(-1,s.scores[1]);
   }
  }
 }
 function install(){
  const C=window.__BSO_MainGameCore;
- if(!C||!C.prototype||C.prototype.__bsoOnlinePatched)return false;
+ if(!C||!C.prototype||C.prototype.__bsoServerWorldPatched)return false;
  const original=C.prototype.update;
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
   installBallOwnerTracking(this);
+  installServerBallAuthority(this);
+  if(this.ball&&this.ball.body&&this.ball.body.space!==null)this.ball.body.space=null;
   const coreStart=performance.now();
-  // Both browsers run the original 40 Hz simulation. Player 2's own controller
-  // is therefore applied locally instead of waiting for a host round-trip.
-  original.call(this,dt);
+  const result=original.call(this,dt);
   const coreEnd=performance.now();
-  if(side===2&&latest){
-   const isNew=latest.sequence>lastAppliedSequence;
-   if(isNew)lastAppliedSequence=latest.sequence;
-   // Keep the host authoritative for the opponent and ball, while preserving
-   // the locally predicted Player 2 avatar.
-   applySnapshot(this,latest,dt,isNew);
+  if(this.ball&&this.ball.body&&this.ball.body.space!==null)this.ball.body.space=null;
+  const allPlayers=[...(this.playersLeft||[]),...(this.playersRight||[])];
+  const local=allPlayers.find(isLocalPlayer);
+  if(local&&local.body&&socket.connected){
+   const body=local.body,position=body.position,velocity=body.velocity;
+   const blockShape=!!(local.block&&body.shapes&&typeof body.shapes.has==="function"&&body.shapes.has(local.block));
+   socket.volatile.emit("engineMovement",{
+    playerNo:local.playerNo,x:position.x,y:position.y,vx:velocity.x,vy:velocity.y,
+    rotation:body.rotation,grounded:!!local.isGrounded,
+    canTakeInHands:!!local.canTakeInHands,blockShape,
+    facing:local.graphic&&local.graphic.scale&&local.graphic.scale.x>0?1:-1,
+    state:typeof local.state==="string"?local.state:"idle",isHuman:local.isHuman!==false
+   });
+   snapshotSentCount++;
   }
+  if(latest)applyServerWorldState(this,latest);
   const syncEnd=performance.now();
   gameUpdates++;
   coreMsTotal+=coreEnd-coreStart;
   syncMsTotal+=syncEnd-coreEnd;
+  return result;
  };
- C.prototype.__bsoOnlinePatched=true;
- console.info("[BSO] Typed original-game state synchronization installed. Player "+side+(side===1?" is host.":" is following host state."));
+ C.prototype.__bsoServerWorldPatched=true;
+ console.info("[BSO] Clients send player movement; server Nape resolves ball collisions and baskets.");
  const status=document.getElementById("bso-status");
- if(status)status.textContent=side===1?"Online match active · You are host":"Online match active · Host-authoritative presentation";
+ if(status)status.textContent="Online match active · Server-authoritative ball physics";
  return true;
 }
-socket.on("engineState",state=>{
- if(side!==2||!state||!Number.isSafeInteger(state.sequence))return;
- if(state.sequence<=lastReceivedSequence)return;
+socket.on("engineWorldState",state=>{
+ if(!state||!Number.isSafeInteger(state.sequence))return;
+ if(state.sequence<=lastReceivedSequence){
+  if(state.sequence===1&&lastReceivedSequence>100){
+   lastReceivedSequence=0;lastAppliedSequence=0;lastScoreEventId=0;snapshotBuffer.length=0;
+  }else return;
+ }
  if(lastReceivedSequence&&state.sequence>lastReceivedSequence+1)diag.sequenceGaps+=state.sequence-lastReceivedSequence-1;
  lastReceivedSequence=state.sequence;
  diag.lastSequence=state.sequence;
