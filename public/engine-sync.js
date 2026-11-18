@@ -53,7 +53,7 @@ function startDiagnostics(){
     "Host ball state: "+(diag.hostBallState||"unknown"),
     "Host ball holder: "+(diag.hostHolder||"none"),
     "Local ball holders: "+(diag.localHolders||"none"),
-    "Local P2 avatar: "+(diag.localPlayerFound?"prediction active":"not found"),
+    "Local P2 avatar: "+(diag.localPlayerFound?"detected":"not found"),
     "Local avatar Y: "+(diag.localPlayerY===null?"n/a":diag.localPlayerY),
     "Grounded: "+(diag.localPlayerGrounded===null?"n/a":diag.localPlayerGrounded),
     "Vertical velocity: "+(diag.localPlayerVy===null?"n/a":diag.localPlayerVy),
@@ -145,8 +145,8 @@ function setVec(vec,x,y){
 function applyObject(o,item,alpha,coreLocalPlayer){
  if(!o||!item)return;
  const b=o.body,g=o.graphic,p=item.body;
- // Blend authoritative corrections into Player 2's local prediction instead of
- // teleporting every body to a new 30 Hz snapshot.
+ // P2 is a presentation client: apply the host's transforms directly.
+ // Player bodies are removed from local physics to prevent competing simulations.
  if(b&&p){
   // Player 2 is a presentation client: its player bodies must never re-enter
   // local Nape simulation. The host controls their transforms and physics state.
