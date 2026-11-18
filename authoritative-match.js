@@ -59,10 +59,12 @@ class AuthoritativeMatch {
       ball: new M(1, 0.6, 0.6, 0.7, 1),
       glass: new M(0.5, 1, 1, 1),
       basket: new M(0.35, 2, 2, 1),
+      net: new M(0.1, 1, 1, 1),
       player: new M(0, 1, 1, 100, 0)
     };
     this.filter = {
       ball: new F(17, 4368), basket: new F(16, 4353),
+      netCollide: new F(17, 4368), netNoCollide: new F(17, 4352),
       arena: new F(4369, 4369), border: new F(4369, 4352),
       player: new F(273, 4096, 4096), playerBlock: new F(273, 4369)
     };
@@ -107,6 +109,7 @@ class AuthoritativeMatch {
     const down = new P(P.rect(-25, 15, 50, 5), null, this.filter.basket);
     down.sensorEnabled = true; down.cbTypes.add(this.cb.down); body.shapes.add(down);
     body.space = this.space;
+    const rimBodies = {};
     for (const x of [center - 30, center, center + 30]) {
       const rimBody = new B(BT.STATIC, N.geom.Vec2.weak(x, 200));
       const rim = new C(7, null, this.material.basket, this.filter.basket);
@@ -114,7 +117,67 @@ class AuthoritativeMatch {
       rim.cbTypes.add(this.cb.ring);
       rimBody.shapes.add(rim);
       rimBody.space = this.space;
+      rimBodies[x < center ? "left" : x > center ? "right" : "center"] = rimBody;
     }
+    // Recreate the original nine dynamic net segments and their pivot/distance
+    // joints so ball-to-net contacts are resolved by the same server Nape world.
+    this.createNet(center, rimBodies);
+  }
+
+  createNet(center, rimBodies) {
+    const N = this.N, B = N.phys.Body, BT = N.phys.BodyType;
+    const P = N.shape.Polygon, V = N.geom.Vec2;
+    const left = center - 28, middle = center, right = center + 28;
+    const top = 203;
+    const s = { x: left, y: top }, a = { x: middle, y: top }, r = { x: right, y: top };
+    const h = { x: left, y: top + 14 }, u = { x: middle, y: top + 12 }, d = { x: right, y: top + 14 };
+    const p = { x: left, y: top + 32 }, f = { x: middle, y: top + 30 }, g = { x: right, y: top + 32 };
+    const makeSegment = (point, filter) => {
+      const segment = new B(BT.DYNAMIC, V.weak(point.x, point.y));
+      segment.shapes.add(new P(P.box(2, 14), this.material.net, filter));
+      segment.space = this.space;
+      return segment;
+    };
+    const bodies = [
+      makeSegment({ x: s.x, y: (s.y + h.y) / 2 }, this.filter.netCollide),
+      makeSegment({ x: h.x, y: (h.y + p.y) / 2 }, this.filter.netCollide),
+      makeSegment({ x: r.x, y: (r.y + d.y) / 2 }, this.filter.netCollide),
+      makeSegment({ x: d.x, y: (d.y + g.y) / 2 }, this.filter.netCollide),
+      makeSegment({ x: a.x, y: (a.y + u.y) / 2 }, this.filter.netNoCollide),
+      makeSegment({ x: u.x, y: (u.y + f.y) / 2 }, this.filter.netNoCollide),
+      makeSegment({ x: p.x, y: p.y + 4 }, this.filter.netNoCollide),
+      makeSegment({ x: g.x, y: g.y + 4 }, this.filter.netNoCollide),
+      makeSegment({ x: f.x, y: f.y + 4 }, this.filter.netNoCollide)
+    ];
+    const Pivot = N.constraint.PivotJoint, Distance = N.constraint.DistanceJoint;
+    const local = (body, point) => body.worldPointToLocal(new V(point.x, point.y));
+    const addPivot = (first, second, point) => {
+      const joint = new Pivot(first, second, local(first, point), local(second, point));
+      joint.ignore = true;
+      joint.space = this.space;
+      return joint;
+    };
+    addPivot(bodies[0], rimBodies.left, s);
+    addPivot(bodies[0], bodies[1], h);
+    addPivot(bodies[2], rimBodies.right, r);
+    addPivot(bodies[2], bodies[3], d);
+    addPivot(bodies[4], rimBodies.center, a);
+    addPivot(bodies[4], bodies[5], u);
+    addPivot(bodies[1], bodies[6], p);
+    addPivot(bodies[3], bodies[7], g);
+    addPivot(bodies[5], bodies[8], f);
+    const addDistance = (first, second, pointA, pointB, length) => {
+      const joint = new Distance(first, second, local(first, pointA), local(second, pointB), length, length);
+      joint.stiff = false;
+      joint.frequency = 4;
+      joint.ignore = true;
+      joint.space = this.space;
+      return joint;
+    };
+    addDistance(bodies[0], bodies[4], h, u, 14);
+    addDistance(bodies[2], bodies[4], d, u, 14);
+    addDistance(bodies[1], bodies[5], p, f, 13);
+    addDistance(bodies[5], bodies[3], f, g, 13);
   }
 
   createBall(B, BT, C) {
@@ -156,9 +219,11 @@ class AuthoritativeMatch {
     const key = socketSide + ':' + playerNo;
     if (this.players.has(key)) return this.players.get(key);
     const N = this.N, B = N.phys.Body, BT = N.phys.BodyType, P = N.shape.Polygon;
+    // The first movement packet replaces this provisional side with the actual
+    // SIDE read from the controlling PlayerObject on that browser.
     const gameSide = socketSide === 1 ? 1 : -1;
-    const x = socketSide === 1 ? 350 : WIDTH - 350;
-    const body = new B(BT.KINEMATIC, N.geom.Vec2.weak(x, 385));
+    const x = WIDTH / 2 + gameSide * 30;
+    const body = new B(BT.DYNAMIC, N.geom.Vec2.weak(x, 385));
     body.userData.socketSide = socketSide;
     body.userData.gameSide = gameSide;
     body.userData.playerNo = playerNo;
@@ -166,17 +231,24 @@ class AuthoritativeMatch {
     legs.cbTypes.add(this.cb.player);
     body.shapes.add(legs);
     const hands = new P(P.box(30, 80));
-    hands.sensorEnabled = true; hands.cbTypes.add(this.cb.hands); body.shapes.add(hands);
+    hands.sensorEnabled = true;
+    hands.cbTypes.add(this.cb.hands);
+    body.shapes.add(hands);
     const block = new P(P.rect(-5, 0, 10, -70), this.material.basket, this.filter.basket);
     block.cbTypes.add(this.cb.block);
     const blockBody = new P(P.box(20, 70), this.material.player, this.filter.playerBlock);
+    // Match PlayerObject.createBody(): align the legs and hands before calculating
+    // its normal mass; block/body shapes are added only when those actions activate.
+    body.align();
     const p = {
       socketSide, gameSide, playerNo, body, hands, block, blockBody,
       x, y: 385, vx: 0, vy: 0, rotation: 0, grounded: true,
-      baseMass:3*body.gravMass,blockMass:6*body.gravMass,
-      canTakeInHands: true, blockShape: false, serverBlockDisabled:false, facing: -gameSide, isHuman: true, state: 'idle', updatedAt: 0
+      baseMass: 3 * body.gravMass, blockMass: 2 * (3 * body.gravMass),
+      canTakeInHands: true, blockShape: false, serverBlockDisabled: false,
+      facing: -gameSide, isHuman: true, state: 'idle', updatedAt: 0,
+      blockBodyActive: false
     };
-    body.gravMass=p.baseMass;
+    body.gravMass = p.baseMass;
     body.allowRotation = false;
     body.userData.player = p;
     body.space = this.space;
@@ -188,6 +260,11 @@ class AuthoritativeMatch {
     if ((socketSide !== 1 && socketSide !== 2) || !packet || typeof packet !== 'object') return false;
     const no = clamp(Math.trunc(finite(packet.playerNo)), 0, 1);
     const p = this.ensurePlayer(socketSide, no);
+    const suppliedSide = Number(packet.gameSide);
+    if (suppliedSide === -1 || suppliedSide === 1) {
+      p.gameSide = suppliedSide;
+      p.body.userData.gameSide = suppliedSide;
+    }
     const x = finite(packet.x, NaN), y = finite(packet.y, NaN);
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < -50 || x > WIDTH + 50 || y < -100 || y > 740) return false;
     p.x = x; p.y = y;
@@ -413,8 +490,8 @@ class AuthoritativeMatch {
       // After a score, the original game gives the restart possession to the
       // side defending the basket that was just scored on.
       if (restartSide === -1 || restartSide === 1) {
-        const restartSocketSide = restartSide === 1 ? 1 : 2;
-        this.takeBall(this.ensurePlayer(restartSocketSide, 0));
+        const restartPlayer = [...this.players.values()].find(p => p.playerNo === 0 && p.gameSide === restartSide);
+        if (restartPlayer) this.takeBall(restartPlayer);
       }
       this.restartSide = 0;
     }
