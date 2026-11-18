@@ -5,16 +5,15 @@ const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 window.__BSO_HOST_PRESENTATION=side===2;
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
-let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
+let latest=null,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
 let ownerTrackingInstalled=false;
 const snapshotBuffer=[];
-const INTERPOLATION_DELAY_MS=50;
-const diag={fps:0,phaserFps:0,desiredFps:0,framePacing:"60 FPS",gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
+const INTERPOLATION_DELAY_MS=75;
+const diag={fps:0,phaserFps:0,desiredFps:0,framePacing:"40 FPS · host-matched",gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
 function startDiagnostics(){
- let lowFpsWindows=0;
  setInterval(()=>{
   const now=performance.now(),elapsed=Math.max(1,now-diagWindowStart);
   diag.fps=Math.round(rafFrames*1000/elapsed);
@@ -23,21 +22,7 @@ function startDiagnostics(){
   diag.syncMs=+(syncMsTotal/Math.max(1,gameUpdates)).toFixed(2);
   diag.packetHz=+(packetCount*1000/elapsed).toFixed(1);
   diag.packetAgeMs=lastPacketAt?Math.round(now-lastPacketAt):null;
-  // Player 2 only displays the host simulation, which publishes 40 snapshots/sec.
-  // If a device cannot sustain 60 render updates, match the host cadence instead
-  // of repeatedly missing its 60 FPS target and producing uneven frame pacing.
-  if(side===2){
-   const game=window.__BSO_P2_GAME;
-   if(game&&game.time&&diag.fps>0&&diag.fps<48){
-    lowFpsWindows++;
-    if(lowFpsWindows>=2&&game.time.desiredFps>40){
-     game.time.desiredFps=40;
-     diag.desiredFps=40;
-     diag.framePacing="40 FPS · host-matched fallback";
-     console.info("[BSO] Player 2 render pacing lowered to 40 FPS to match the authoritative host stream.");
-    }
-   }else lowFpsWindows=0;
-  }
+  // Both clients use the original game's 40 Hz fixed-step pace.
   rafFrames=gameUpdates=packetCount=0;coreMsTotal=syncMsTotal=0;diagWindowStart=now;
  },1000);
  const installHud=()=>{
@@ -56,9 +41,10 @@ function startDiagnostics(){
    const remote=window.__BSO_REMOTE_INPUT_PACKETS||0;
    hud.textContent=[
     "BSO SYNC DIAGNOSTICS · P"+side,
-    "Render FPS: "+diag.fps,
+    "Gameplay updates/sec: "+diag.fps,
     "Phaser measured FPS: "+diag.phaserFps,
     "Phaser target FPS: "+diag.desiredFps,
+    "Frame pacing: "+diag.framePacing,
     "P2 frame pacing: "+diag.framePacing,
     "Renderer: "+diag.renderer,
     "Render interpolation: "+diag.renderHook+" · "+diag.interpolationDelayMs+" ms buffer",
@@ -267,13 +253,15 @@ function lockPresentationClient(core){
 function visualValues(item){
  if(!item)return null;
  const b=item.body||{};
- // The canvas renderer draws the graphic transform, which can differ from the
- // physics body center (notably while jumping and during character animations).
- // Prefer graphic coordinates to avoid Player 2 avatar float.
+ // Use the host sprite transform plus its physics velocity to bridge brief
+ // snapshot gaps without freezing Player 2's display.
  return {
   x:Number.isFinite(item.x)?item.x:b.x,
   y:Number.isFinite(item.y)?item.y:b.y,
   r:Number.isFinite(item.r)?item.r:b.rotation,
+  vx:Number.isFinite(b.vx)?b.vx:0,
+  vy:Number.isFinite(b.vy)?b.vy:0,
+  angularVel:Number.isFinite(b.angularVel)?b.angularVel:0,
   scaleX:Number.isFinite(item.scaleX)?item.scaleX:1,
   scaleY:Number.isFinite(item.scaleY)?item.scaleY:1
  };
@@ -291,8 +279,11 @@ function renderInterpolatedSnapshot(core,now){
  if(side!==2||!core||!snapshotBuffer.length)return;
  const targetTime=now-INTERPOLATION_DELAY_MS;
  let left=snapshotBuffer[0],right=left;
- if(targetTime>=snapshotBuffer[snapshotBuffer.length-1].at){
-  left=right=snapshotBuffer[snapshotBuffer.length-1];
+ let extrapolationMs=0;
+ const newest=snapshotBuffer[snapshotBuffer.length-1];
+ if(targetTime>=newest.at){
+  left=right=newest;
+  extrapolationMs=Math.min(75,targetTime-newest.at);
  }else if(targetTime>snapshotBuffer[0].at){
   for(let i=0;i<snapshotBuffer.length-1;i++){
    const a=snapshotBuffer[i],b=snapshotBuffer[i+1];
@@ -301,6 +292,18 @@ function renderInterpolatedSnapshot(core,now){
  }
  const span=right.at-left.at;
  const t=span>0?Math.max(0,Math.min(1,(targetTime-left.at)/span)):1;
+ const extrapolate=extrapolationMs/1000;
+ const predict=(a,b)=>{
+  const first=a||b,second=b||a;
+  if(!first||!second)return null;
+  return {
+   x:Number.isFinite(first.x)&&Number.isFinite(second.x)?lerp(first.x,second.x,t)+second.vx*extrapolate:null,
+   y:Number.isFinite(first.y)&&Number.isFinite(second.y)?lerp(first.y,second.y,t)+second.vy*extrapolate:null,
+   r:Number.isFinite(first.r)&&Number.isFinite(second.r)?lerp(first.r,second.r,t)+second.angularVel*extrapolate:null,
+   scaleX:lerp(first.scaleX,second.scaleX,t),
+   scaleY:lerp(first.scaleY,second.scaleY,t)
+  };
+ };
  const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
  for(const player of players){
   const graphic=player&&player.graphic;
@@ -309,23 +312,26 @@ function renderInterpolatedSnapshot(core,now){
   const a=left.visuals.players.get(key);
   const b=right.visuals.players.get(key);
   if(!a&&!b)continue;
-  const first=a||b,second=b||a;
-  if(Number.isFinite(first.x)&&Number.isFinite(second.x))graphic.x=lerp(first.x,second.x,t);
-  if(Number.isFinite(first.y)&&Number.isFinite(second.y))graphic.y=lerp(first.y,second.y,t);
-  if(Number.isFinite(first.r)&&Number.isFinite(second.r))graphic.rotation=lerp(first.r,second.r,t);
+  const value=predict(a,b);
+  if(!value)continue;
+  if(Number.isFinite(value.x))graphic.x=value.x;
+  if(Number.isFinite(value.y))graphic.y=value.y;
+  if(Number.isFinite(value.r))graphic.rotation=value.r;
   if(graphic.scale){
-   if(Number.isFinite(first.scaleX)&&Number.isFinite(second.scaleX))graphic.scale.x=lerp(first.scaleX,second.scaleX,t);
-   if(Number.isFinite(first.scaleY)&&Number.isFinite(second.scaleY))graphic.scale.y=lerp(first.scaleY,second.scaleY,t);
+   if(Number.isFinite(value.scaleX))graphic.scale.x=value.scaleX;
+   if(Number.isFinite(value.scaleY))graphic.scale.y=value.scaleY;
   }
  }
  const ballGraphic=core.ball&&core.ball.graphic;
  if(ballGraphic){
   const a=left.visuals.ball,b=right.visuals.ball;
   if(a||b){
-   const first=a||b,second=b||a;
-   if(Number.isFinite(first.x)&&Number.isFinite(second.x))ballGraphic.x=lerp(first.x,second.x,t);
-   if(Number.isFinite(first.y)&&Number.isFinite(second.y))ballGraphic.y=lerp(first.y,second.y,t);
-   if(Number.isFinite(first.r)&&Number.isFinite(second.r))ballGraphic.rotation=lerp(first.r,second.r,t);
+   const value=predict(a,b);
+   if(value){
+    if(Number.isFinite(value.x))ballGraphic.x=value.x;
+    if(Number.isFinite(value.y))ballGraphic.y=value.y;
+    if(Number.isFinite(value.r))ballGraphic.rotation=value.r;
+   }
   }
  }
 }
@@ -337,7 +343,6 @@ function installGameplayRenderer(){
  const originalUpdate=G.prototype.update;
  G.prototype.update=function(){
   rafFrames++;
-  if(side===2)window.__BSO_P2_GAME=this.game;
   const result=originalUpdate.apply(this,arguments);
   const C=window.__BSO_MainGameCore;
   const core=C&&C.instance;
@@ -409,11 +414,10 @@ function install(){
   if(side===2)lockPresentationClient(this);
   if(!this.objects||!this.objects.length)return;
   if(side===1){
-   const now=Date.now();
-   // Volatile snapshots keep real-time state fresh instead of queueing stale frames under load.
-   // The original Basketball Legends gameplay loop advances in 25 ms fixed steps (40 Hz).
-   // Publish at the same cadence so Player 2 isn't interpolating against a slower 30 Hz stream.
-   if(now-lastSend>=25){lastSend=now;socket.volatile.emit("engineState",makeSnapshot(this));}
+   // MainGameCore.update runs inside the original 25 ms fixed-step accumulator.
+   // Publish once for every authoritative simulation step. A wall-clock >=25 ms
+   // gate can skip every other update when the browser ticks at 24.x ms intervals.
+   socket.volatile.emit("engineState",makeSnapshot(this));
   }else if(latest){
    const isNew=latest.sequence>lastAppliedSequence;
    if(isNew)lastAppliedSequence=latest.sequence;
@@ -440,8 +444,8 @@ socket.on("engineState",state=>{
  latest=state;
  lastPacketAt=performance.now();
  snapshotBuffer.push({at:lastPacketAt,state,visuals:cacheSnapshotVisuals(state)});
- while(snapshotBuffer.length>8)snapshotBuffer.shift();
- while(snapshotBuffer.length>2&&snapshotBuffer[1].at<lastPacketAt-180)snapshotBuffer.shift();
+ while(snapshotBuffer.length>12)snapshotBuffer.shift();
+ while(snapshotBuffer.length>2&&snapshotBuffer[1].at<lastPacketAt-300)snapshotBuffer.shift();
  packetCount++;
 });
 const start=Date.now();
