@@ -8,14 +8,13 @@ if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;
 let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
 let ownerTrackingInstalled=false;
 const snapshotBuffer=[];
-const INTERPOLATION_DELAY_MS=25;
-const diag={fps:0,phaserFps:0,desiredFps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
+const INTERPOLATION_DELAY_MS=50;
+const diag={fps:0,phaserFps:0,desiredFps:0,framePacing:"60 FPS",gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
 function startDiagnostics(){
- const tick=()=>{rafFrames++;requestAnimationFrame(tick);};
- requestAnimationFrame(tick);
+ let lowFpsWindows=0;
  setInterval(()=>{
   const now=performance.now(),elapsed=Math.max(1,now-diagWindowStart);
   diag.fps=Math.round(rafFrames*1000/elapsed);
@@ -24,6 +23,21 @@ function startDiagnostics(){
   diag.syncMs=+(syncMsTotal/Math.max(1,gameUpdates)).toFixed(2);
   diag.packetHz=+(packetCount*1000/elapsed).toFixed(1);
   diag.packetAgeMs=lastPacketAt?Math.round(now-lastPacketAt):null;
+  // Player 2 only displays the host simulation, which publishes 40 snapshots/sec.
+  // If a device cannot sustain 60 render updates, match the host cadence instead
+  // of repeatedly missing its 60 FPS target and producing uneven frame pacing.
+  if(side===2){
+   const game=window.__BSO_P2_GAME;
+   if(game&&game.time&&diag.fps>0&&diag.fps<48){
+    lowFpsWindows++;
+    if(lowFpsWindows>=2&&game.time.desiredFps>40){
+     game.time.desiredFps=40;
+     diag.desiredFps=40;
+     diag.framePacing="40 FPS · host-matched fallback";
+     console.info("[BSO] Player 2 render pacing lowered to 40 FPS to match the authoritative host stream.");
+    }
+   }else lowFpsWindows=0;
+  }
   rafFrames=gameUpdates=packetCount=0;coreMsTotal=syncMsTotal=0;diagWindowStart=now;
  },1000);
  const installHud=()=>{
@@ -45,6 +59,7 @@ function startDiagnostics(){
     "Render FPS: "+diag.fps,
     "Phaser measured FPS: "+diag.phaserFps,
     "Phaser target FPS: "+diag.desiredFps,
+    "P2 frame pacing: "+diag.framePacing,
     "Renderer: "+diag.renderer,
     "Render interpolation: "+diag.renderHook+" · "+diag.interpolationDelayMs+" ms buffer",
     "Game updates/sec: "+diag.gameUps,
@@ -252,13 +267,24 @@ function lockPresentationClient(core){
 function visualValues(item){
  if(!item)return null;
  const b=item.body||{};
+ // The canvas renderer draws the graphic transform, which can differ from the
+ // physics body center (notably while jumping and during character animations).
+ // Prefer graphic coordinates to avoid Player 2 avatar float.
  return {
-  x:Number.isFinite(b.x)?b.x:item.x,
-  y:Number.isFinite(b.y)?b.y:item.y,
-  r:Number.isFinite(b.rotation)?b.rotation:item.r,
+  x:Number.isFinite(item.x)?item.x:b.x,
+  y:Number.isFinite(item.y)?item.y:b.y,
+  r:Number.isFinite(item.r)?item.r:b.rotation,
   scaleX:Number.isFinite(item.scaleX)?item.scaleX:1,
   scaleY:Number.isFinite(item.scaleY)?item.scaleY:1
  };
+}
+function cacheSnapshotVisuals(state){
+ const players=new Map();
+ for(const item of state.objects||[]){
+  if(item&&Number.isFinite(item.side)&&Number.isFinite(item.playerNo))
+   players.set(item.side+":"+item.playerNo,visualValues(item));
+ }
+ return {players,ball:visualValues(state.ball)};
 }
 function lerp(a,b,t){return a+(b-a)*t}
 function renderInterpolatedSnapshot(core,now){
@@ -279,9 +305,9 @@ function renderInterpolatedSnapshot(core,now){
  for(const player of players){
   const graphic=player&&player.graphic;
   if(!graphic)continue;
-  const aItem=left.state.objects.find(item=>item.side===player.SIDE&&item.playerNo===player.playerNo);
-  const bItem=right.state.objects.find(item=>item.side===player.SIDE&&item.playerNo===player.playerNo);
-  const a=visualValues(aItem),b=visualValues(bItem);
+  const key=player.SIDE+":"+player.playerNo;
+  const a=left.visuals.players.get(key);
+  const b=right.visuals.players.get(key);
   if(!a&&!b)continue;
   const first=a||b,second=b||a;
   if(Number.isFinite(first.x)&&Number.isFinite(second.x))graphic.x=lerp(first.x,second.x,t);
@@ -294,7 +320,7 @@ function renderInterpolatedSnapshot(core,now){
  }
  const ballGraphic=core.ball&&core.ball.graphic;
  if(ballGraphic){
-  const a=visualValues(left.state.ball),b=visualValues(right.state.ball);
+  const a=left.visuals.ball,b=right.visuals.ball;
   if(a||b){
    const first=a||b,second=b||a;
    if(Number.isFinite(first.x)&&Number.isFinite(second.x))ballGraphic.x=lerp(first.x,second.x,t);
@@ -310,6 +336,8 @@ function installGameplayRenderer(){
  if(G.prototype.__bsoPresentationRenderInstalled)return true;
  const originalUpdate=G.prototype.update;
  G.prototype.update=function(){
+  rafFrames++;
+  if(side===2)window.__BSO_P2_GAME=this.game;
   const result=originalUpdate.apply(this,arguments);
   const C=window.__BSO_MainGameCore;
   const core=C&&C.instance;
@@ -411,7 +439,7 @@ socket.on("engineState",state=>{
  diag.lastSequence=state.sequence;
  latest=state;
  lastPacketAt=performance.now();
- snapshotBuffer.push({at:lastPacketAt,state});
+ snapshotBuffer.push({at:lastPacketAt,state,visuals:cacheSnapshotVisuals(state)});
  while(snapshotBuffer.length>8)snapshotBuffer.shift();
  while(snapshotBuffer.length>2&&snapshotBuffer[1].at<lastPacketAt-180)snapshotBuffer.shift();
  packetCount++;
