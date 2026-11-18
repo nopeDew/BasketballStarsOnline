@@ -6,7 +6,7 @@ window.__BSO_ONLINE_MATCH=!!roomCode;
 const sessionId=sessionStorage.getItem("bso-session");
 const querySeed=Number(params.get("seed")||0);
 if(querySeed){let state=querySeed>>>0;Math.random=()=>{state=(state+0x6D2B79F5)>>>0;let t=state;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296}}
-const socket=io();window.__BSO_SOCKET=socket;
+const socket=io({transports:["websocket","polling"],tryAllTransports:true});window.__BSO_SOCKET=socket;
 const actions=["left","right","jump","down","shoot","super"];
 let side=Number(params.get("side")||1),remoteSide=side===1?2:1;
 // Either player can use either original keyboard layout. Each player stores their own preference.
