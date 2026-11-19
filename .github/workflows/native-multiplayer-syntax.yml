@@ -19,3 +19,5 @@ jobs:
           node --check public/engine-sync.js
           node --check public/engine-network.js
           node --check scripts/patch-original-game.js
+          node --check scripts/multiplayer-sync-test.js
+          node scripts/multiplayer-sync-test.js
