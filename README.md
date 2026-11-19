@@ -7,7 +7,7 @@ An online 1v1 integration for the original **Basketball Legends 2019** game. The
 - **Player 1 runs the original game's full native simulation.** Its physics, ball possession, steals, shots, blocks, rims, backboards, nets, and scoring remain in the original browser game engine.
 - The Node server is only a room/input/state relay. It does not run a second Nape world or recreate the game's physics.
 - Player 1 sends compact match snapshots to Player 2 at the original 40 Hz game cadence. Snapshot messages use volatile delivery, so stale frames are dropped instead of queued.
-- Player 2's own character keeps its native controller and local movement. The remote character and ball are driven by Player 1's snapshots and are removed from Player 2's local Nape simulation to avoid doing the same physics work twice.
+- Player 2's own character keeps its native controller and local movement. The remote character and ball are driven by Player 1's snapshots and are removed from Player 2's local Nape simulation. P2 also skips the remote character's duplicate controller update, leaving only its own controller active.
 - Player 2 smoothly reconciles remote transforms and possession/score state from the host. The browser uses the original automatic renderer selection and 40 Hz timing.
 - Both players' controls are relayed into the original InputManager. Input changes are sent immediately, with a low-rate heartbeat to repair missed key-up events.
 
@@ -36,4 +36,4 @@ Use a Node web service with `npm install` as the build command and `npm start` a
 
 ## Verification
 
-The GitHub Actions workflow installs and patches the original game, checks JavaScript syntax, and runs multiplayer architecture regression checks. A real two-device match is still needed to verify control feel and latency after deployment.
+The GitHub Actions workflow installs and patches the original game, checks JavaScript syntax, and runs multiplayer architecture regression checks, including the P2-only remote-controller skip. A real two-device match is still needed to verify control feel and latency after deployment.
