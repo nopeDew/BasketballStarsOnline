@@ -58,7 +58,7 @@ source = replaceUnique(
 const fpsAnchor = 'this.game.time.desiredFps = 40';
 const fpsCount = source.split(fpsAnchor).length - 1;
 if (fpsCount !== 1) throw new Error('Could not uniquely locate the original Phaser frame cap (found ' + fpsCount + ').');
-source = source.replace(fpsAnchor, 'this.game.time.desiredFps = 60');
+source = source.replace(fpsAnchor, 'this.game.time.desiredFps = 40');
 
 // Expose and hook the original game's native character selector for live online synchronization.
 source = replaceUnique(
@@ -177,10 +177,9 @@ source = replaceUnique(
 // Preserve the original per-render physics-to-graphic update for both clients.
 // Player 2 predicts its own avatar locally, while host snapshots correct the opponent and ball.
 
-// Keep the game's original WebGL renderer. Phaser.AUTO can silently fall back
-// to Canvas on Player 2's device, producing a large frame-rate drop.
-if (!source.includes('renderer: Phaser.WEBGL,')) throw new Error('Could not locate the original WebGL renderer.');
-source = source.replace('renderer: Phaser.AUTO,', 'renderer: Phaser.WEBGL,');
+// Keep the original game's automatic renderer selection and frame pacing.
+if (!source.includes('renderer: Phaser.WEBGL,')) throw new Error('Could not locate the original renderer setting.');
+source = source.replace('renderer: Phaser.WEBGL,', 'renderer: Phaser.AUTO,');
 
 if (!source.includes('this.playBtn2.visible = !1,')) throw new Error('Could not locate the original 2-player menu visibility setting.');
 source = source.replace('this.playBtn2.visible = !1,', '');
