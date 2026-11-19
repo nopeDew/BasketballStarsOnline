@@ -17,6 +17,8 @@ assert.match(network, /window\.__BSO_ONLINE_MATCH\s*\?\s*remote\s*:/,
   'Online input getters must use the unified network input state.');
 assert.match(sync, /function sampleSnapshot\(now\)/,
   'Player 2 must interpolate from a snapshot buffer.');
+assert.match(sync, /expectedSide.*window\.__BSO_NET_GAME_SIDE/,
+  'Player 2 must be identified by its stable online side if its controller is wrapped.');
 assert.match(sync, /INTERPOLATION_DELAY_MS\s*=\s*50/);
 assert.match(sync, /MAX_EXTRAPOLATION_MS\s*=\s*60/);
 assert.match(sync, /socket\.volatile\.emit\("engineState"/,
