@@ -77,7 +77,7 @@ app.get("/play/basketball_legends_2019.min.js", (_req, res) => {
     "BSO_ONLINE_SELECT_PLAYER_SYNC",
     "BSO_ONLINE_GAMEPLAY_STATE",
     "window.__BSO_GameplayState = _",
-    "this.game.time.desiredFps = 40",
+    "this.game.time.desiredFps = 60",
     "renderer: Phaser.WEBGL,"
   ];
   const missing = requiredMarkers.filter(marker => !js.includes(marker));
