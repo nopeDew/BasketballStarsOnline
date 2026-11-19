@@ -5,7 +5,7 @@ const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
 let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
-const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,p2LocalController:"unknown",p2RemoteController:"not found",p2RemoteBody:"unknown"};
+const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
@@ -49,8 +49,6 @@ function startDiagnostics(){
     "Remote input packets: "+remote,
     "P2 controller: "+(controller?"active":"not reporting"),
     "Local P2 avatar: "+(diag.localPlayerFound?"prediction active":"not found"),
-    "P2 remote controller: "+diag.p2RemoteController,
-    "P2 remote physics body: "+diag.p2RemoteBody,
     "Local avatar Y: "+(diag.localPlayerY===null?"n/a":diag.localPlayerY),
     "Grounded: "+(diag.localPlayerGrounded===null?"n/a":diag.localPlayerGrounded),
     "Vertical velocity: "+(diag.localPlayerVy===null?"n/a":diag.localPlayerVy),
@@ -113,7 +111,7 @@ function applyObject(o,item,alpha,coreLocalPlayer){
  // Blend authoritative corrections into Player 2's local prediction instead of
  // teleporting every body to a new 30 Hz snapshot.
  if(b&&p){
-  if(side!==2&&typeof item.physicsActive==="boolean"&&o!==coreLocalPlayer&&o.theSpace){
+  if(typeof item.physicsActive==="boolean"&&o!==coreLocalPlayer&&o.theSpace){
    if(!item.physicsActive&&b.space!==null)b.space=null;
    else if(item.physicsActive&&b.space===null)b.space=o.theSpace;
   }
@@ -170,13 +168,6 @@ function applyBall(core,item,alpha,players){
   if(expected&&!player.withBall&&typeof player.takeBallInHands==="function")player.takeBallInHands();
   else if(!expected&&player.withBall&&typeof player.freeBall==="function")player.freeBall();
  }
- // On P2, the ball is a host-simulated presentation object. Keep its body out
- // of the local Nape world; possession and transforms still come from P1.
- if(side===2){
-  if(b.space!==null)b.space=null;
-  applyObject(ball,item,1,null);
-  return;
- }
  let transitioned=false;
  if(item.physicsSpace===0&&b.space!==null&&typeof ball.removeFromPhysics==="function"){
   ball.removeFromPhysics();transitioned=true;
@@ -188,12 +179,9 @@ function applyBall(core,item,alpha,players){
  applyObject(ball,item,transitioned?1:alpha,null);
 }
 function isLocallyControlledP2(player){
- if(side!==2||!player)return false;
  const Controller=window.__BSO_PlayerController2;
- if(Controller&&player.controller&&
-   (player.controller instanceof Controller||player.controller.constructor===Controller))return true;
- const expectedSide=Number(window.__BSO_NET_GAME_SIDE);
- return Number.isFinite(expectedSide)&&player.SIDE===expectedSide&&Number(player.playerNo)===0;
+ if(side!==2||!player||!player.controller||!Controller)return false;
+ return player.controller instanceof Controller||player.controller.constructor===Controller;
 }
 function applySnapshot(core,s,dt,applyUi){
  if(!s||!Array.isArray(s.objects))return;
@@ -226,64 +214,15 @@ function applySnapshot(core,s,dt,applyUi){
   }
  }
 }
-const p2SkippedControllers=new WeakSet();
-function disableP2RemoteController(player,local){
- if(side!==2||!player||player===local)return false;
- const controller=player.controller;
- if(!controller||typeof controller.update!=="function")return false;
- if(p2SkippedControllers.has(controller))return true;
- // The remote character is display-only on P2: its movement and action state
- // arrive in P1 snapshots. Keep P2's local controller native and skip only P1's
- // duplicate controller on this presentation client.
- try{
-  controller.update=function(){};
-  if(controller.update!==null&&typeof controller.update==="function"){
-   p2SkippedControllers.add(controller);
-   return true;
-  }
- }catch(error){
-  console.warn("[BSO] Could not disable duplicate remote controller",error);
- }
- return false;
-}
-function detachP2NonLocalPhysics(core){
- if(side!==2||!core)return;
- const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
- const local=players.find(isLocallyControlledP2)||null;
- diag.p2LocalController=local&&local.controller?"native":"not found";
- // Never guess which avatar is local. If the original controller/side mapping
- // is unavailable, leave both controllers and both bodies untouched.
- if(!local){
-  diag.p2RemoteController="skipped · local avatar unknown";
-  diag.p2RemoteBody="skipped · local avatar unknown";
-  return;
- }
- let remoteControllerDisabled=false,remoteBodyDetached=false;
- for(const player of players){
-  if(!player||player===local)continue;
-  remoteControllerDisabled=disableP2RemoteController(player,local)||remoteControllerDisabled;
-  const body=player.body;
-  if(body&&body.space!==null){body.space=null;remoteBodyDetached=true;}
-  else if(body)remoteBodyDetached=true;
- }
- const ball=core.ball;
- if(ball&&ball.body&&ball.body.space!==null)ball.body.space=null;
- diag.p2RemoteController=remoteControllerDisabled?"disabled":"not found";
- diag.p2RemoteBody=remoteBodyDetached?"detached":"not found";
-}
 function install(){
  const C=window.__BSO_MainGameCore;
  if(!C||!C.prototype||C.prototype.__bsoOnlinePatched)return false;
  const original=C.prototype.update;
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
-  // P2 runs native physics only for its own avatar. The host's opponent and ball
-  // are removed before and after the local Nape step, then reconciled from snapshots.
-  detachP2NonLocalPhysics(this);
   const coreStart=performance.now();
   original.call(this,dt);
   const coreEnd=performance.now();
-  detachP2NonLocalPhysics(this);
   if(!this.objects||!this.objects.length)return;
   if(side===1){
    const now=Date.now();
@@ -291,11 +230,11 @@ function install(){
    // The original Basketball Legends gameplay loop advances in 25 ms fixed steps (40 Hz).
    // Publish at the same cadence so Player 2 isn't interpolating against a slower 30 Hz stream.
    if(now-lastSend>=25){lastSend=now;socket.volatile.emit("engineState",makeSnapshot(this));}
-  }else if(latest&&latest.sequence>lastAppliedSequence){
-   lastAppliedSequence=latest.sequence;
-   // Reconcile only when a fresh host packet arrives, not on every local tick.
-   applySnapshot(this,latest,dt,true);
-   detachP2NonLocalPhysics(this);
+  }else if(latest){
+   const isNew=latest.sequence>lastAppliedSequence;
+   if(isNew)lastAppliedSequence=latest.sequence;
+   // Reconcile smoothly every simulation tick; update score/match flags only on new packets.
+   applySnapshot(this,latest,dt,isNew);
   }
   const syncEnd=performance.now();
   gameUpdates++;
