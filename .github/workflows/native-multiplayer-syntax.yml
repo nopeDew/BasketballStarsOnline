@@ -1,0 +1,21 @@
+name: Native multiplayer syntax checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check multiplayer scripts
+        run: |
+          node --check server.js
+          node --check public/engine-sync.js
+          node --check public/engine-network.js
+          node --check scripts/patch-original-game.js
