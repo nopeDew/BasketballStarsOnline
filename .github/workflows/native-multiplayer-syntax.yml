@@ -1,4 +1,4 @@
-name: Native multiplayer syntax checks
+name: Native multiplayer checks
 
 on:
   push:
@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install dependencies and extract original Nape engine
+      - name: Install dependencies and patch the original game
         run: npm install
       - name: Check multiplayer scripts
         run: |
@@ -22,7 +22,4 @@ jobs:
           node --check public/engine-network.js
           node --check scripts/patch-original-game.js
           node --check scripts/multiplayer-sync-test.js
-          node --check authoritative-match.js
-          node --check scripts/physics-smoke-test.js
           node scripts/multiplayer-sync-test.js
-          node scripts/physics-smoke-test.js
