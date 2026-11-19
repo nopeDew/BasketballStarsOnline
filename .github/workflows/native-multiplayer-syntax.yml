@@ -25,7 +25,7 @@ jobs:
           const moduleSource = source.slice(arrayStart + "}([".length);
           const modules = moduleSource.split(/\n, function\([^)]*\) \{\n/);
           console.log('Original module count:', modules.length);
-          for (const id of [2, 13, 65, 94]) {
+          for (const id of [25, 44, 85, 94]) {
             const code = modules[id] || '';
             console.log('\\n=== ORIGINAL MODULE ' + id + ' (' + code.length + ' chars) ===\\n');
             console.log(code.length <= 7000 ? code : code.slice(-7000));
