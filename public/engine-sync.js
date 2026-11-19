@@ -226,18 +226,25 @@ function applySnapshot(core,s,dt,applyUi){
   }
  }
 }
+const p2SkippedControllers=new WeakSet();
 function disableP2RemoteController(player,local){
  if(side!==2||!player||player===local)return false;
  const controller=player.controller;
  if(!controller||typeof controller.update!=="function")return false;
- if(controller.__bsoRemoteControllerSkipped)return true;
- // The remote character is display-only on P2: its actions, movement and
- // animation state arrive in P1 snapshots. Running its full native controller
- // locally duplicates work and can contend with P2's own controller.
- controller.__bsoOriginalUpdate=controller.update;
- controller.update=function(){};
- controller.__bsoRemoteControllerSkipped=true;
- return true;
+ if(p2SkippedControllers.has(controller))return true;
+ // The remote character is display-only on P2: its movement and action state
+ // arrive in P1 snapshots. Keep P2's local controller native and skip only P1's
+ // duplicate controller on this presentation client.
+ try{
+  controller.update=function(){};
+  if(controller.update!==null&&typeof controller.update==="function"){
+   p2SkippedControllers.add(controller);
+   return true;
+  }
+ }catch(error){
+  console.warn("[BSO] Could not disable duplicate remote controller",error);
+ }
+ return false;
 }
 function detachP2NonLocalPhysics(core){
  if(side!==2||!core)return;
