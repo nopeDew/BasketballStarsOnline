@@ -184,9 +184,14 @@ function applyBall(core,item,alpha,players){
  applyObject(ball,item,transitioned?1:alpha,null);
 }
 function isLocallyControlledP2(player){
+ if(side!==2||!player)return false;
  const Controller=window.__BSO_PlayerController2;
- if(side!==2||!player||!player.controller||!Controller)return false;
- return player.controller instanceof Controller||player.controller.constructor===Controller;
+ if(Controller&&player.controller&&
+    (player.controller instanceof Controller||player.controller.constructor===Controller))return true;
+ // Controller wrappers can differ between game builds. The online room side is
+ // stable: P2 owns the native SIDE=+1, playerNo=0 avatar.
+ const expectedSide=Number(window.__BSO_NET_GAME_SIDE);
+ return Number.isFinite(expectedSide)&&player.SIDE===expectedSide&&Number(player.playerNo)===0;
 }
 function lerp(a,b,t){return a+(b-a)*t;}
 function findMatchingObject(list,item){
