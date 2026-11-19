@@ -224,7 +224,7 @@ class AuthoritativeMatch {
     const N = this.N, B = N.phys.Body, BT = N.phys.BodyType, P = N.shape.Polygon;
     // The first movement packet replaces this provisional side with the actual
     // SIDE read from the controlling PlayerObject on that browser.
-    const gameSide = socketSide === 1 ? 1 : -1;
+    const gameSide = socketSide === 1 ? -1 : 1;
     const x = WIDTH / 2 + gameSide * 30;
     const body = new B(BT.DYNAMIC, N.geom.Vec2.weak(x, 385));
     body.userData.socketSide = socketSide;
@@ -301,11 +301,10 @@ class AuthoritativeMatch {
     if ((socketSide !== 1 && socketSide !== 2) || !packet || typeof packet !== 'object') return false;
     const no = clamp(Math.trunc(finite(packet.playerNo)), 0, 1);
     const p = this.ensurePlayer(socketSide, no);
-    const suppliedSide = Number(packet.gameSide);
-    if (suppliedSide === -1 || suppliedSide === 1) {
-      p.gameSide = suppliedSide;
-      p.body.userData.gameSide = suppliedSide;
-    }
+    // The room slot owns the court side. Do not let a stale/misidentified client
+    // movement packet swap Player 1 and Player 2 in the collision world.
+    p.gameSide = socketSide === 1 ? -1 : 1;
+    p.body.userData.gameSide = p.gameSide;
     const x = finite(packet.x, NaN), y = finite(packet.y, NaN);
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < -50 || x > WIDTH + 50 || y < -100 || y > 740) return false;
     p.x = x; p.y = y;
