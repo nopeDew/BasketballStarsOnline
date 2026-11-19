@@ -9,6 +9,16 @@ const engineDir = path.resolve(__dirname, '..', 'engine-source');
 const napePath = path.join(engineDir, 'assets', 'box2dweb', 'nape.min.js');
 assert.ok(fs.existsSync(napePath), 'Original Nape library must exist after install.');
 
+// Guard the browser-side ownership mapping too: Player 1 is SIDE=-1 and
+// Player 2 is SIDE=+1 in the native game. Server-confirmed hand possession
+// must succeed locally without returning the ball body to client physics.
+const clientSync = fs.readFileSync(path.join(__dirname, '..', 'public', 'engine-sync.js'), 'utf8');
+const clientNetwork = fs.readFileSync(path.join(__dirname, '..', 'public', 'engine-network.js'), 'utf8');
+assert.match(clientSync, /side===1\?-1:1/, 'Client local-player fallback must match native SIDE ownership.');
+assert.match(clientNetwork, /__BSO_NET_GAME_SIDE=side===1\?-1:1/, 'Network layer must publish the native side mapping.');
+assert.match(clientSync, /proto\.takeInHands=function\(\)\{return true\};/, 'Server-confirmed possession must be accepted by the local player state.');
+assert.match(clientSync, /holderSide===null\?looseBallSide:holderSide/, 'Loose ball state must never use an invalid SIDE sentinel.');
+
 const match = new AuthoritativeMatch(napePath, 0xB50);
 assert.equal(match.ensurePlayer(1, 0).gameSide, -1, "Network Player 1 owns the original left/WASD side.");
 assert.equal(match.ensurePlayer(2, 0).gameSide, 1, "Network Player 2 owns the original right/arrow side.");
