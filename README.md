@@ -1,45 +1,35 @@
 # Basketball Stars Online
 
-An online 1v1 integration for the original **Basketball Legends 2019** game. The lobby is separate, but the gameplay is the original game engine and its own InputManager, PlayerController, physics, court, players, and animations.
+An online 1v1 wrapper around the original **Basketball Legends 2019** browser game. The original game engine, physics, court, player controllers, and animations remain intact.
 
-## What the online patch changes
+## Multiplayer model
 
-The Render install step extracts the original source archive and patches the actual `basketball_legends_2019.f.js` bundle before serving it. The patch:
-- Hooks both native player input slots into the live Socket.IO input states.
-- Lets either player choose either original control layout (WASD + B/V or arrows + L/K), with separate per-player preferences.
-- Relays each player's team and character choice live to the other browser and applies both selections before the match starts.
-- Exposes the original MainGameCore and the actual native menu states used by this exact source build.
-- Starts the native two-player setup automatically after both people ready up.
-- Leaves the original character-selection screen open; each player presses **PLAY**, and the server starts the match only after both are ready.
-- Routes Player 2 inputs directly into the original `PlayerController2` update loop.
-- Leaves keyboard events available to the original selection UI until gameplay begins, then captures and relays the correct player controls.
-- Hides the online controls/status panel once the match becomes active, leaving the court unobstructed.
-- Returns the remaining player to the room/loading screen when their opponent explicitly leaves or disconnects.
-- Keeps the original two-player menu path available and allows Phaser to fall back to Canvas where WebGL is unavailable.
+- Player 1 runs the original game's native physics simulation. This keeps collisions, ball possession, steals, shots, blocks, rims, backboards, nets, and scoring inside the real game engine instead of approximating them in a second physics implementation.
+- The server accepts match snapshots only from Player 1, validates their size and sequence, and relays them to Player 2.
+- Player 2 runs their own character movement locally and reconciles the opponent, ball, possession, animation state, and score against Player 1's snapshots.
+- Both players' input states are relayed through Socket.IO so Player 1's original two-player simulation receives Player 2's controls.
+- This is **host-authoritative original-engine simulation**, not server-side physics. A true dedicated-server simulation would require porting the complete original game physics and gameplay rules; the previous partial Nape recreation was removed because it did not preserve the game's native movement and ball lifecycle.
 
-Each browser simulates its own player's movement locally for responsive controls and sends that player's transform to the server at the native 40 Hz simulation rate. The server runs one Nape physics world per room and owns the ball body, player-hand pickup sensors, player blocks and shield contacts, arena/border collisions, rim/backboard and linked-net collisions, basket sensors, possession, shot/dunk/steal outcomes, and score events. Neither browser simulates ball collisions or decides whether a basket counts. Both clients receive the same server-generated world snapshots and apply the same score event, while interpolating the remote player and server-owned ball before rendering. The client tries WebSocket first and falls back to HTTP long-polling if WebSocket is unavailable. Input changes are sent immediately, with a low-rate volatile heartbeat to repair missed key-up states. The native selection-ready handshake is reopened on each return to character selection so another round can start in the same room.
+## Online features
+
+- Private six-character rooms, ready-up, reconnect handling, and leave-match flow.
+- Live team/character selection synchronization.
+- A shared seed to reduce random gameplay differences.
+- Separate per-player WASD or arrow-key layouts, with custom key bindings.
+- Original player controllers and animations retained.
 
 ## How to play
 
 1. Open the deployed site on two separate devices.
-2. Player 1 enters a name and selects **CREATE COURT**.
-3. Share the six-character room code.
-4. Player 2 enters the code and selects **JOIN**.
-5. Both players select **I'M READY**.
-6. The original game opens its native character-selection screen. Take your time choosing your player.
-7. Each player presses the original **PLAY** button. The match starts on both devices only after both players have pressed it.
-8. Each player can choose either control layout in the in-game overlay: WASD (A/D move, W jump, S block, B shoot, V special) or arrow keys (←/→ move, ↑ jump, ↓ block, L shoot, K special). The chosen layout and custom bindings are saved separately for each player.
+2. Player 1 creates a court and shares the six-character code.
+3. Player 2 joins using that code.
+4. Both players ready up, select their characters, and press the original PLAY button.
+5. Use the controls shown in the in-game panel.
 
 ## Deploy on Render
 
-Create a **Web Service** connected to this repository:
-- Runtime: Node
-- Build command: `npm install`
-- Start command: `npm start`
-- Optional health check path: `/health`
+Use a Node web service with `npm install` as the build command and `npm start` as the start command. The install step extracts the original game assets and applies the online input/selection hooks. The optional health-check path is `/health`.
 
-The `postinstall` command extracts `BasketballStarsUnblocked.github.io-main.zip` into `engine-source/` and then runs `scripts/patch-original-game.js` against the extracted original JavaScript bundle. The server refuses to serve the gameplay bundle if the source patch markers are missing. Render supplies `PORT` automatically.
+## Verification status
 
-## Testing status and limitation
-
-The latest server/client scripts and source-patch script pass JavaScript syntax checks, and the native patch anchors were confirmed in the uploaded original game archive. The regenerated bundle and a real two-device rematch/latency test still need to be run after Render rebuilds the latest commit. The original title was designed for local play, so browser-based state replication can still have timing or physics drift and is not yet independently verified as production-grade multiplayer.
+The original game simulation and snapshot relay are restored in the repository. Automated checks for the former duplicate server physics have been removed. A live two-device match still needs to be tested after Render deploys this recovery commit.
