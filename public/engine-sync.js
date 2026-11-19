@@ -214,6 +214,11 @@ function applyBall(core,item,alpha,players){
  const holderSide=holder?holder.side:null;
  const appliedHolderNo=holder?holder.playerNo:0;
  const hasHolder=item.state==="inHands"&&!!holder;
+ // Never pass the old sentinel value 2 as a game SIDE to the native BallObject.
+ // Preserve its last valid side for loose/initial balls; use the authoritative
+ // side from the server whenever a shot, dunk, or other action has one.
+ const looseBallSide=(item.side===-1||item.side===1)?item.side:
+  ((ball.SIDE===-1||ball.SIDE===1)?ball.SIDE:(side===1?-1:1));
  diag.hostBallState=item.state||"unknown";
  diag.hostHolder=hasHolder?"side "+holderSide+" / player "+holderNo:"none";
  const possessionMismatch=(players||[]).some(player=>{
@@ -223,7 +228,7 @@ function applyBall(core,item,alpha,players){
  const stateMismatch=ball.state!==item.state||(holderSide!==null&&ball.SIDE!==holderSide)||ball.__bsoHolderSide!==holderSide||ball.__bsoHolderNo!==holderNo;
  // Re-run the original game callbacks if either the ball state or player flags drift.
  if((stateMismatch||possessionMismatch)&&typeof ball.setState==="function"&&typeof item.state==="string")
-  ball.setState(item.state,holderSide===null?2:holderSide,appliedHolderNo,true);
+  ball.setState(item.state,holderSide===null?looseBallSide:holderSide,appliedHolderNo,true);
  ball.__bsoHolderSide=holderSide;ball.__bsoHolderNo=holderNo;
  // ballInHands marks the new holder but does not clear a stale previous holder.
  for(const player of players||[]){
@@ -240,9 +245,10 @@ function applyBall(core,item,alpha,players){
 }
 function isLocalPlayer(player){
  if(!player)return false;
- const Controller=side===1?window.__BSO_PlayerController:window.__BSO_PlayerController2;
- if(Controller&&player.controller&&(player.controller instanceof Controller||player.controller.constructor===Controller))return true;
- const expectedSide=side===1?1:-1;
+ // Native Basketball Legends assigns SIDE=-1 to the left/WASD player and
+ // SIDE=+1 to the right/arrow-key player. Network room side 1 is the left player.
+ const networkGameSide=Number(window.__BSO_NET_GAME_SIDE);
+ const expectedSide=(networkGameSide===-1||networkGameSide===1)?networkGameSide:(side===1?-1:1);
  return player.SIDE===expectedSide&&Number(player.playerNo)===0;
 }
 function installServerBallAuthority(core){
@@ -257,7 +263,10 @@ function installServerBallAuthority(core){
   return !!player&&Number(gameSide)===Number(player.SIDE);
  };
  // Pickup, rim/net/player contacts and score sensors are resolved only by server Nape.
- proto.takeInHands=function(){return false};
+ // Treat server-confirmed possession as successful locally, but keep the ball body detached.
+ // PlayerObject.takeBallInHands() still needs this success result to update its own
+ // withBall/animation state; the server snapshot remains the sole source of physics.
+ proto.takeInHands=function(){return true};
  // These are action requests. The server checks the current ball holder and uses
  // the authoritative player proxy's in-game SIDE, position and velocity.
  proto.shoot=function(gameSide,x,y,velocityX,accuracy){
