@@ -9,9 +9,9 @@ const snapshotBuffer=[];
 const INTERPOLATION_DELAY_MS=50;
 const MAX_EXTRAPOLATION_MS=60;
 const MAX_SNAPSHOT_AGE_MS=300;
-const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null};
+const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,renderHook:"waiting",renderHz:0,visualMs:0};
 window.__BSO_SYNC_DIAG=diag;
-let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
+let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,renderHookFrames=0,visualMsTotal=0,diagWindowStart=performance.now(),lastPacketAt=0,activeCore=null;
 const clamp=n=>Number.isFinite(n)?n:0;
 function startDiagnostics(){
  const tick=()=>{rafFrames++;requestAnimationFrame(tick);};
@@ -23,8 +23,10 @@ function startDiagnostics(){
   diag.coreMs=+(coreMsTotal/Math.max(1,gameUpdates)).toFixed(2);
   diag.syncMs=+(syncMsTotal/Math.max(1,gameUpdates)).toFixed(2);
   diag.packetHz=+(packetCount*1000/elapsed).toFixed(1);
+  diag.renderHz=Math.round(renderHookFrames*1000/elapsed);
+  diag.visualMs=+(visualMsTotal/Math.max(1,renderHookFrames)).toFixed(2);
   diag.packetAgeMs=lastPacketAt?Math.round(now-lastPacketAt):null;
-  rafFrames=gameUpdates=packetCount=0;coreMsTotal=syncMsTotal=0;diagWindowStart=now;
+  rafFrames=gameUpdates=packetCount=renderHookFrames=0;coreMsTotal=syncMsTotal=visualMsTotal=0;diagWindowStart=now;
  },1000);
  const installHud=()=>{
   if(!document.body){setTimeout(installHud,100);return;}
@@ -46,6 +48,8 @@ function startDiagnostics(){
     "Game updates/sec: "+diag.gameUps,
     "Core update: "+diag.coreMs+" ms",
     "Network sync: "+diag.syncMs+" ms",
+    "Pre-render interpolation: "+diag.renderHook+" · "+diag.renderHz+" Hz",
+    "Visual sync cost: "+diag.visualMs+" ms",
     "Host snapshots/sec: "+diag.packetHz,
     "Last snapshot age: "+(diag.packetAgeMs===null?"none":diag.packetAgeMs+" ms"),
     "Interpolation buffer: "+snapshotBuffer.length+" · "+INTERPOLATION_DELAY_MS+" ms delay",
@@ -116,7 +120,11 @@ function applyObject(o,item,alpha,coreLocalPlayer){
  // Blend authoritative corrections into Player 2's local prediction instead of
  // teleporting every body to a new 30 Hz snapshot.
  if(b&&p){
-  if(typeof item.physicsActive==="boolean"&&o!==coreLocalPlayer&&o.theSpace){
+  if(side===2&&o!==coreLocalPlayer){
+   // P2 displays the host-controlled opponent; simulating this body locally
+   // duplicates Nape work and makes the host correction fight local collisions.
+   if(b.space!==null)b.space=null;
+  }else if(typeof item.physicsActive==="boolean"&&o!==coreLocalPlayer&&o.theSpace){
    if(!item.physicsActive&&b.space!==null)b.space=null;
    else if(item.physicsActive&&b.space===null)b.space=o.theSpace;
   }
@@ -174,7 +182,11 @@ function applyBall(core,item,alpha,players){
   else if(!expected&&player.withBall&&typeof player.freeBall==="function")player.freeBall();
  }
  let transitioned=false;
- if(item.physicsSpace===0&&b.space!==null&&typeof ball.removeFromPhysics==="function"){
+ if(side===2){
+  // P2 never runs local ball collisions. Its ball body is positioned from
+  // host snapshots and kept out of the local Nape world at all times.
+  if(b.space!==null)b.space=null;
+ }else if(item.physicsSpace===0&&b.space!==null&&typeof ball.removeFromPhysics==="function"){
   ball.removeFromPhysics();transitioned=true;
  }else if(item.physicsSpace===1&&ball.space1&&b.space!==ball.space1){
   b.space=ball.space1;ball.updateGraphic();ball.setVisibleOnframe=true;transitioned=true;
@@ -256,6 +268,42 @@ function sampleSnapshot(now){
   ball:interpolateItem(before.ball,after.ball,amount,extraSeconds)
  };
 }
+function applyVisualSnapshot(core,s){
+ if(!core||!s)return;
+ const localPlayers=[...(core.playersLeft||[]),...(core.playersRight||[])];
+ const localP2=localPlayers.find(isLocallyControlledP2)||null;
+ for(const item of s.objects||[]){
+  const player=Number.isFinite(item.playerNo)&&Number.isFinite(item.side)
+   ?localPlayers.find(p=>p&&p.playerNo===item.playerNo&&p.SIDE===item.side):null;
+  if(!player||isLocallyControlledP2(player))continue;
+  applyObject(player,item,1,localP2);
+ }
+ if(core.ball&&s.ball){
+  if(core.ball.body&&core.ball.body.space!==null)core.ball.body.space=null;
+  applyObject(core.ball,s.ball,1,null);
+ }
+}
+function installRenderInterpolation(){
+ const State=window.__BSO_GameplayState;
+ const proto=State&&State.prototype;
+ if(!proto)return false;
+ if(proto.__bsoRenderInterpolationInstalled)return true;
+ const original=typeof proto.preRender==="function"?proto.preRender:null;
+ proto.preRender=function(){
+  const result=original?original.apply(this,arguments):undefined;
+  if(side===2&&activeCore&&snapshotBuffer.length){
+   const started=performance.now();
+   const sampled=sampleSnapshot(started);
+   if(sampled)applyVisualSnapshot(activeCore,sampled);
+   renderHookFrames++;
+   visualMsTotal+=performance.now()-started;
+  }
+  return result;
+ };
+ proto.__bsoRenderInterpolationInstalled=true;
+ diag.renderHook="preRender";
+ return true;
+}
 function applySnapshot(core,s,dt,applyUi){
  if(!s||!Array.isArray(s.objects))return;
  const alpha=1; // sampleSnapshot() already interpolates positions at render time.
@@ -293,6 +341,7 @@ function install(){
  const original=C.prototype.update;
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
+  activeCore=this;
   const coreStart=performance.now();
   original.call(this,dt);
   const coreEnd=performance.now();
@@ -319,6 +368,7 @@ function install(){
   syncMsTotal+=syncEnd-coreEnd;
  };
  C.prototype.__bsoOnlinePatched=true;
+ installRenderInterpolation();
  console.info("[BSO] Typed original-game state synchronization installed. Player "+side+(side===1?" is host.":" is following host state."));
  const status=document.getElementById("bso-status");
  if(status)status.textContent=side===1?"Online match active · You are host":"Online match active · Synced to host";
