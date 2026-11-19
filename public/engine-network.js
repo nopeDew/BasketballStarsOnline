@@ -59,7 +59,7 @@ window.__BSO_UPDATE_NET_INPUTS=(who,next)=>{
   }
  }
  inputs[who]={...next};
- if(who===2){window.__BSO_P2_INPUT_DEBUG={...inputs[2],at:Date.now()};}
+ if(who===2){window.__BSO_P2_INPUT_DEBUG={...inputs[2],move:(inputs[2].right?1:0)-(inputs[2].left?1:0),at:Date.now()};}
 };
 window.__BSO_CONSUME_NET_DASH=(who,direction)=>{
  const d=dashPulse[who]||{};
@@ -309,8 +309,8 @@ setInterval(()=>sendLocal(true),250);
 setInterval(()=>{
  const el=document.getElementById("bso-p2-debug");if(!el)return;
  const input=window.__BSO_NET_INPUTS&&window.__BSO_NET_INPUTS[2]||{};
- const ctrl=window.__BSO_P2_CONTROLLER_DEBUG;
+ const ctrl=window.__BSO_P2_INPUT_DEBUG;
  const keys=["left","right","jump","down","shoot","super"].filter(k=>input[k]);
- el.textContent="P2 net input: "+(keys.join(", ")||"none")+" · P2 controller: "+(ctrl?("move "+ctrl.move+", jump "+!!ctrl.jump+", shoot "+!!ctrl.shoot+", block "+!!ctrl.block):"not reporting");
+ el.textContent="P2 net input: "+(keys.join(", ")||"none")+" · P2 network input: "+(ctrl?("move "+ctrl.move+", jump "+!!ctrl.jump+", shoot "+!!ctrl.shoot+", block "+!!ctrl.block):"not reporting");
 },200);
 })();
