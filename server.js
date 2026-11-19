@@ -276,7 +276,8 @@ io.on("connection", socket => {
     try { size = Buffer.byteLength(JSON.stringify(state)); } catch (_) { return; }
     if (size > 128 * 1024) return;
     const opponent = room.players.find(p => p.side === 2 && p.socketId);
-    if (opponent) io.to(opponent.socketId).emit("engineState", state);
+    // Snapshots are replaceable state, not events: drop stale frames instead of queuing them.
+    if (opponent) io.to(opponent.socketId).volatile.emit("engineState", state);
   });
 
   socket.on("engineLeave", acknowledge => {
