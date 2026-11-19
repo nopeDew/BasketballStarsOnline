@@ -38,7 +38,7 @@ function startDiagnostics(){
   },true);
   setInterval(()=>{
    if(!visible)return;
-   const controller=window.__BSO_P2_CONTROLLER_DEBUG;
+   const controller=window.__BSO_P2_INPUT_DEBUG;
    const remote=window.__BSO_REMOTE_INPUT_PACKETS||0;
    hud.textContent=[
     "BSO SYNC DIAGNOSTICS · P"+side,
@@ -52,7 +52,7 @@ function startDiagnostics(){
     "Sequence gaps: "+diag.sequenceGaps,
     "Last sequence: "+diag.lastSequence,
     "Remote input packets: "+remote,
-    "P2 controller: "+(controller?"active":"not reporting"),
+    "P2 network input: "+(controller?("move "+controller.move+", jump "+!!controller.jump+", shoot "+!!controller.shoot):"not reporting"),
     "Local P2 avatar: "+(diag.localPlayerFound?"prediction active":"not found"),
     "Local avatar Y: "+(diag.localPlayerY===null?"n/a":diag.localPlayerY),
     "Grounded: "+(diag.localPlayerGrounded===null?"n/a":diag.localPlayerGrounded),
