@@ -23,22 +23,12 @@ assert.match(sync, /socket\.volatile\.emit\("engineState",makeSnapshot\(this\)\)
   'Player 1 must publish snapshots from its native game simulation.');
 assert.match(sync, /socket\.on\("engineState"/,
   'Player 2 must consume the host snapshots.');
-assert.match(sync, /function detachP2NonLocalPhysics\(core\)/,
-  'Player 2 must avoid simulating the remote avatar and ball locally.');
-assert.match(sync, /function disableP2RemoteController\(player,local\)/,
-  'Player 2 must skip its duplicate remote character controller.');
-assert.match(sync, /detachP2NonLocalPhysics\(this\);[\s\S]*?original\.call\(this,dt\)/,
-  'Remote body work must be removed before the native game update.');
-assert.match(sync, /controller\.update=function\(\)\{\}/,
-  'Only the remote controller update should be skipped on P2.');
-assert.match(sync, /if\(!local\)\{[\s\S]*?local avatar unknown[\s\S]*?return;/,
-  'Never detach either player if P2 local-avatar detection fails.');
-assert.match(sync, /latest&&latest\.sequence>lastAppliedSequence/,
-  'P2 should reconcile only on fresh host snapshots.');
-assert.match(sync, /original\.call\(this,dt\)/);
-assert.match(sync, /if\(side===2\)[\s\S]*?b\.space=null[\s\S]*?applyObject\(ball,item,1,null\)/,
-  'Player 2 must render the host ball without running local ball physics.');
-assert.match(sync, /expectedSide=Number\(window\.__BSO_NET_GAME_SIDE\)/,
+assert.doesNotMatch(sync, /detachP2NonLocalPhysics|disableP2RemoteController|controller\\.update=function/,
+  'Player 2 must retain the original native player and ball physics/controllers.');
+assert.match(sync, /else if\\(latest\\)\\{[\\s\\S]*?const isNew=latest\\.sequence>lastAppliedSequence;[\\s\\S]*?applySnapshot\\(this,latest,dt,isNew\\);/,
+  'Player 2 must smoothly reconcile the latest host snapshot on each native game update.');
+assert.match(sync, /original\\.call\\(this,dt\\)/);
+assert.match(sync, /expectedSide=Number\\(window\\.__BSO_NET_GAME_SIDE\\)/,
   'Player 2 local avatar detection needs a stable side fallback.');
 
 assert.match(network, /window\.__BSO_ONLINE_MATCH\s*\?\s*remote\s*:/,
