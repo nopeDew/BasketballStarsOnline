@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 const { Server } = require("socket.io");
+const { AuthoritativeMatch, STEP: AUTHORITATIVE_STEP } = require("./authoritative-match");
 
 const app = express();
 const server = http.createServer(app);
@@ -144,6 +145,7 @@ function removePlayer(room, player) {
   if (!room.players.length) rooms.delete(room.code);
   else {
     room.started = false;
+    room.authoritativeMatch = null;
     room.players.forEach(p => { p.ready = false; p.selectionReady = false; p.selection = null; });
     room.selectionStarted = false;
     updateRoom(room);
@@ -158,7 +160,7 @@ io.on("connection", socket => {
     let code;
     do { code = makeCode(); } while (rooms.has(code));
     const room = {
-      code, started: false, selectionStarted: false, seed: crypto.randomBytes(4).readUInt32BE(0),
+      code, started: false, selectionStarted: false, seed: crypto.randomBytes(4).readUInt32BE(0), authoritativeMatch: null,
       players: [{ name: cleanName(name), side: 1, ready: false, selectionReady: false, sessionId, socketId: null }]
     };
     rooms.set(code, room);
@@ -229,6 +231,7 @@ io.on("connection", socket => {
     // once when either player enters the native selector for the next game.
     if (room.selectionStarted) {
       room.selectionStarted = false;
+      room.authoritativeMatch = null;
       room.players.forEach(p => { p.selectionReady = false; });
       io.to(room.code).emit("engineSelectionProgress", { ready: 0 });
       updateRoom(room);
@@ -245,8 +248,18 @@ io.on("connection", socket => {
     const readyCount = room.players.filter(p => p.selectionReady).length;
     io.to(room.code).emit("engineSelectionProgress", { ready: readyCount });
     if (readyCount === 2 && room.players.every(p => !!p.socketId)) {
-      room.selectionStarted = true;
-      io.to(room.code).emit("engineSelectionStart", { code: room.code, selections: roomSelections(room) });
+      try {
+        const napePath = path.join(ENGINE_DIR, "assets", "box2dweb", "nape.min.js");
+        if (!fs.existsSync(napePath)) throw new Error("Original Nape physics library is missing: " + napePath);
+        room.authoritativeMatch = new AuthoritativeMatch(napePath, room.seed);
+        room.selectionStarted = true;
+        io.to(room.code).emit("engineSelectionStart", { code: room.code, selections: roomSelections(room) });
+      } catch (error) {
+        room.authoritativeMatch = null;
+        room.selectionStarted = false;
+        console.error("[BSO] Authoritative physics initialization failed:", error);
+        io.to(room.code).emit("engineError", "Server physics could not start. Check the Render logs and restart the match.");
+      }
     }
     updateRoom(room);
   });
@@ -258,26 +271,27 @@ io.on("connection", socket => {
     const allowed = ["left", "right", "jump", "down", "shoot", "super"];
     const actions = {};
     for (const action of allowed) actions[action] = !!payload.actions[action];
+    if (room.authoritativeMatch) room.authoritativeMatch.setInput(player.side, actions);
     const opponent = room.players.find(p => p !== player);
     if (opponent && opponent.socketId) {
       io.to(opponent.socketId).emit("engineRemoteInput", { side: player.side, actions });
     }
   });
 
-  // Player 1's unmodified Nape world is the match authority. The server validates
-  // and relays compact snapshots; Player 2 keeps its own movement simulation local.
-  socket.on("engineState", state => {
+  // Client-authoritative movement only: the server uses these transforms as
+  // kinematic proxies for its single authoritative ball/collision simulation.
+  socket.on("engineMovement", movement => {
     const room = rooms.get(socket.data.engineRoom);
     const player = findPlayer(room, socket);
-    if (!room || !room.started || !room.selectionStarted || !player || player.side !== 1 ||
-        !state || !Number.isSafeInteger(state.sequence) || !Array.isArray(state.objects) ||
-        state.objects.length > 80 || !state.ball || typeof state.ball !== "object") return;
-    let size;
-    try { size = Buffer.byteLength(JSON.stringify(state)); } catch (_) { return; }
-    if (size > 128 * 1024) return;
-    const opponent = room.players.find(p => p.side === 2 && p.socketId);
-    // Snapshots are replaceable state, not events: drop stale frames instead of queuing them.
-    if (opponent) io.to(opponent.socketId).volatile.emit("engineState", state);
+    if (!room || !room.started || !room.selectionStarted || !player || !room.authoritativeMatch) return;
+    room.authoritativeMatch.setPlayerMovement(player.side, movement);
+  });
+
+  socket.on("engineBallAction", action => {
+    const room = rooms.get(socket.data.engineRoom);
+    const player = findPlayer(room, socket);
+    if (!room || !room.started || !room.selectionStarted || !player || !room.authoritativeMatch) return;
+    room.authoritativeMatch.action(player.side, action);
   });
 
   socket.on("engineLeave", acknowledge => {
@@ -323,5 +337,21 @@ io.on("connection", socket => {
     }, DISCONNECT_GRACE_MS);
   });
 });
+
+// One server-owned Nape world per active room. Movement remains client-driven;
+// all ball physics, player/ball contacts and basket scoring are resolved here.
+setInterval(() => {
+  for (const room of rooms.values()) {
+    if (!room.started || !room.selectionStarted || !room.authoritativeMatch) continue;
+    try {
+      const state = room.authoritativeMatch.tick(AUTHORITATIVE_STEP);
+      io.to(room.code).volatile.emit("engineWorldState", state);
+    } catch (error) {
+      console.error("[BSO] Authoritative room tick failed for " + room.code + ":", error);
+      io.to(room.code).emit("engineError", "The server physics simulation stopped. Please restart the match.");
+      room.authoritativeMatch = null;
+    }
+  }
+}, Math.round(AUTHORITATIVE_STEP * 1000));
 
 server.listen(PORT, () => console.log("Basketball Legends 2019 Online listening on " + PORT));
