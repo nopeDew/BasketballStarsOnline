@@ -251,6 +251,13 @@ function detachP2NonLocalPhysics(core){
  const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
  const local=players.find(isLocallyControlledP2)||null;
  diag.p2LocalController=local&&local.controller?"native":"not found";
+ // Never guess which avatar is local. If the original controller/side mapping
+ // is unavailable, leave both controllers and both bodies untouched.
+ if(!local){
+  diag.p2RemoteController="skipped · local avatar unknown";
+  diag.p2RemoteBody="skipped · local avatar unknown";
+  return;
+ }
  let remoteControllerDisabled=false,remoteBodyDetached=false;
  for(const player of players){
   if(!player||player===local)continue;
