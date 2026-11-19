@@ -25,10 +25,10 @@ jobs:
           const moduleSource = source.slice(arrayStart + "}([".length);
           const modules = moduleSource.split(/\n, function\(t, e, i\) \{\n/);
           console.log('Original module count:', modules.length);
-          for (const id of [13, 94]) {
+          for (const id of [13, 65, 90, 91, 92, 93, 94, 95, 96]) {
             const code = modules[id] || '';
             console.log('\\n=== ORIGINAL MODULE ' + id + ' (' + code.length + ' chars) ===\\n');
-            console.log(code.slice(0, 14000));
+            console.log(code.length <= 7000 ? code : code.slice(-7000));
           }
           NODE
       - name: Check multiplayer scripts
