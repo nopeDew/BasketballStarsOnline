@@ -6,8 +6,9 @@ An online 1v1 wrapper around the original **Basketball Legends 2019** browser ga
 
 - Player 1 runs the original game's native physics simulation. This keeps collisions, ball possession, steals, shots, blocks, rims, backboards, nets, and scoring inside the real game engine instead of approximating them in a second physics implementation.
 - The server accepts match snapshots only from Player 1, validates their size and sequence, and relays them to Player 2.
-- Player 2 runs their own character movement locally and reconciles the opponent, ball, possession, animation state, and score against Player 1's snapshots.
-- Both players' input states are relayed through Socket.IO so Player 1's original two-player simulation receives Player 2's controls.
+- Player 2 keeps the original Player 2 controller update loop and local movement simulation. Its InputManager reads the network input state directly, while the opponent and ball are rendered from a short interpolation buffer of Player 1's snapshots.
+- Both players' input states are relayed through Socket.IO so both copies of the original two-player simulation receive the same controls. Online input getters use one network input source rather than mixing network and separately-polled local keyboard state.
+- Snapshot state is sent as replaceable, volatile data: when the connection falls behind, stale frames are dropped instead of building a queue. Player 2 interpolates with a 50 ms buffer and extrapolates only briefly across packet gaps.
 - This is **host-authoritative original-engine simulation**, not server-side physics. A true dedicated-server simulation would require porting the complete original game physics and gameplay rules; the previous partial Nape recreation was removed because it did not preserve the game's native movement and ball lifecycle.
 
 ## Online features
@@ -32,4 +33,4 @@ Use a Node web service with `npm install` as the build command and `npm start` a
 
 ## Verification status
 
-The original game simulation and snapshot relay are restored in the repository. Automated checks for the former duplicate server physics have been removed. A live two-device match still needs to be tested after Render deploys this recovery commit.
+The original Player 2 controller update loop is preserved, the network InputManager is the sole online input source, and Player 2 renders buffered host snapshots with short-gap extrapolation. Automated syntax and architecture checks run on pushes. A live two-device match is still required to verify real frame pacing and movement.
