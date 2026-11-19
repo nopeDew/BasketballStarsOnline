@@ -15,6 +15,22 @@ jobs:
           node-version: 20
       - name: Install dependencies and patch the original game
         run: npm install
+      - name: Inspect original controller and game-core update paths
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const source = fs.readFileSync('engine-source/basketball_legends_2019.f.js', 'utf8');
+          for (const needle of ['PlayerController2', 'MainGameCore']) {
+            let at = 0, count = 0;
+            while ((at = source.indexOf(needle, at)) !== -1 && count < 5) {
+              const start = Math.max(0, at - 1200);
+              const end = Math.min(source.length, at + 2600);
+              console.log('\n=== ' + needle + ' occurrence ' + (++count) + ' at ' + at + ' ===\n');
+              console.log(source.slice(start, end));
+              at += needle.length;
+            }
+          }
+          NODE
       - name: Check multiplayer scripts
         run: |
           node --check server.js
