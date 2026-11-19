@@ -55,6 +55,11 @@ source = replaceUnique(
 // authoritative snapshots, so forcing its Phaser loop to 60 Hz adds rendering
 // work without adding new simulation states to display.
 
+const fpsAnchor = 'this.game.time.desiredFps = 40';
+const fpsCount = source.split(fpsAnchor).length - 1;
+if (fpsCount !== 1) throw new Error('Could not uniquely locate the original Phaser frame cap (found ' + fpsCount + ').');
+source = source.replace(fpsAnchor, 'this.game.time.desiredFps = 60');
+
 // Expose and hook the original game's native character selector for live online synchronization.
 source = replaceUnique(
   source,
