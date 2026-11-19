@@ -5,6 +5,10 @@ const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
 let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
+const snapshotBuffer=[];
+const INTERPOLATION_DELAY_MS=50;
+const MAX_EXTRAPOLATION_MS=60;
+const MAX_SNAPSHOT_AGE_MS=300;
 const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
@@ -44,6 +48,7 @@ function startDiagnostics(){
     "Network sync: "+diag.syncMs+" ms",
     "Host snapshots/sec: "+diag.packetHz,
     "Last snapshot age: "+(diag.packetAgeMs===null?"none":diag.packetAgeMs+" ms"),
+    "Interpolation buffer: "+snapshotBuffer.length+" · "+INTERPOLATION_DELAY_MS+" ms delay",
     "Sequence gaps: "+diag.sequenceGaps,
     "Last sequence: "+diag.lastSequence,
     "Remote input packets: "+remote,
@@ -183,9 +188,72 @@ function isLocallyControlledP2(player){
  if(side!==2||!player||!player.controller||!Controller)return false;
  return player.controller instanceof Controller||player.controller.constructor===Controller;
 }
+function lerp(a,b,t){return a+(b-a)*t;}
+function findMatchingObject(list,item){
+ if(!Array.isArray(list)||!item)return null;
+ if(Number.isFinite(item.side)&&Number.isFinite(item.playerNo))
+  return list.find(candidate=>candidate&&candidate.side===item.side&&candidate.playerNo===item.playerNo)||null;
+ return list.find(candidate=>candidate&&candidate.i===item.i)||null;
+}
+function interpolateItem(a,b,t,extraSeconds){
+ if(!b)return a;
+ if(!a)a=b;
+ const out={...b};
+ for(const key of ["x","y","r","alpha","scaleX","scaleY"]){
+  if(Number.isFinite(a[key])&&Number.isFinite(b[key]))out[key]=lerp(a[key],b[key],t);
+ }
+ if(a.body&&b.body){
+  out.body={...b.body};
+  for(const key of ["x","y","vx","vy","rotation","angularVel"]){
+   if(Number.isFinite(a.body[key])&&Number.isFinite(b.body[key]))
+    out.body[key]=lerp(a.body[key],b.body[key],t);
+  }
+ }
+ if(extraSeconds>0){
+  const body=out.body;
+  const vx=body&&Number.isFinite(body.vx)?body.vx:0;
+  const vy=body&&Number.isFinite(body.vy)?body.vy:0;
+  const angular=body&&Number.isFinite(body.angularVel)?body.angularVel:0;
+  if(Number.isFinite(out.x))out.x+=vx*extraSeconds;
+  if(Number.isFinite(out.y))out.y+=vy*extraSeconds;
+  if(Number.isFinite(out.r))out.r+=angular*extraSeconds;
+  if(body){
+   if(Number.isFinite(body.x))body.x+=vx*extraSeconds;
+   if(Number.isFinite(body.y))body.y+=vy*extraSeconds;
+   if(Number.isFinite(body.rotation))body.rotation+=angular*extraSeconds;
+  }
+ }
+ return out;
+}
+function sampleSnapshot(now){
+ if(!snapshotBuffer.length)return null;
+ const newest=snapshotBuffer[snapshotBuffer.length-1];
+ if(now-newest.at>MAX_SNAPSHOT_AGE_MS)return null;
+ const target=now-INTERPOLATION_DELAY_MS;
+ let left=snapshotBuffer[0],right=left,extraSeconds=0;
+ if(target>=newest.at){
+  left=right=newest;
+  extraSeconds=Math.min(MAX_EXTRAPOLATION_MS,Math.max(0,target-newest.at))/1000;
+ }else if(target>snapshotBuffer[0].at){
+  for(let i=0;i<snapshotBuffer.length-1;i++){
+   const a=snapshotBuffer[i],b=snapshotBuffer[i+1];
+   if(target>=a.at&&target<=b.at){left=a;right=b;break;}
+  }
+ }
+ const span=right.at-left.at;
+ const amount=span>0?Math.max(0,Math.min(1,(target-left.at)/span)):1;
+ const before=left.state,after=right.state;
+ return {
+  ...after,
+  objects:(after.objects||[]).map(item=>interpolateItem(
+   findMatchingObject(before.objects,item),item,amount,extraSeconds
+  )),
+  ball:interpolateItem(before.ball,after.ball,amount,extraSeconds)
+ };
+}
 function applySnapshot(core,s,dt,applyUi){
  if(!s||!Array.isArray(s.objects))return;
- const alpha=1-Math.exp(-Math.max(1,Math.min(50,Number(dt)||16.67))/65);
+ const alpha=1; // sampleSnapshot() already interpolates positions at render time.
  const localPlayers=[...(core.playersLeft||[]),...(core.playersRight||[])];
  const localP2=localPlayers.find(isLocallyControlledP2)||null;
  diag.localPlayerFound=!!localP2;
@@ -202,7 +270,7 @@ function applySnapshot(core,s,dt,applyUi){
   applyObject(player,item,alpha,localP2);
  }
  if(applyUi){
-  core.isPlaying=!!s.playing;core.isPaused=!!s.paused;core.isScored=!!s.scored;core.isWaiting=!!s.waiting;
+  core.isPlaying=!!s.playing;core.isScored=!!s.scored;core.isWaiting=!!s.waiting;
   core.isEnd=!!s.ended;core.isOvertime=!!s.overtime;core.isSuperShot=!!s.superShot;core.isAlleyOop=!!s.alleyOop;
   if(Number.isFinite(s.matchTime))core.matchTime=s.matchTime;
   if(Number.isFinite(s.endTime))core.endTime=s.endTime;
@@ -229,12 +297,16 @@ function install(){
    // Volatile snapshots keep real-time state fresh instead of queueing stale frames under load.
    // The original Basketball Legends gameplay loop advances in 25 ms fixed steps (40 Hz).
    // Publish at the same cadence so Player 2 isn't interpolating against a slower 30 Hz stream.
-   if(now-lastSend>=25){lastSend=now;socket.emit("engineState",makeSnapshot(this));}
-  }else if(latest){
-   const isNew=latest.sequence>lastAppliedSequence;
-   if(isNew)lastAppliedSequence=latest.sequence;
-   // Reconcile smoothly every simulation tick; update score/match flags only on new packets.
-   applySnapshot(this,latest,dt,isNew);
+   if(now-lastSend>=25){lastSend=now;socket.volatile.emit("engineState",makeSnapshot(this));}
+  }else if(snapshotBuffer.length){
+   const sampled=sampleSnapshot(performance.now());
+   if(sampled){
+    const newest=latest;
+    const isNew=!!(newest&&newest.sequence>lastAppliedSequence);
+    if(isNew)lastAppliedSequence=newest.sequence;
+    // P2 renders a short delayed sample, extrapolating only across brief packet gaps.
+    applySnapshot(this,sampled,dt,isNew);
+   }
   }
   const syncEnd=performance.now();
   gameUpdates++;
@@ -254,7 +326,10 @@ socket.on("engineState",state=>{
  lastReceivedSequence=state.sequence;
  diag.lastSequence=state.sequence;
  latest=state;
- lastPacketAt=performance.now();
+ const receivedAt=performance.now();
+ snapshotBuffer.push({state,at:receivedAt});
+ while(snapshotBuffer.length>12)snapshotBuffer.shift();
+ lastPacketAt=receivedAt;
  packetCount++;
 });
 const start=Date.now();
