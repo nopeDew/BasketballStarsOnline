@@ -89,7 +89,9 @@ window.__BSO_INSTALL_INPUT_MANAGER=InputManager=>{
     const remote=kind==="dash"
       ? !!window.__BSO_CONSUME_NET_DASH(player,action)
       : !!(window.__BSO_NET_INPUTS&&window.__BSO_NET_INPUTS[player]&&window.__BSO_NET_INPUTS[player][action]);
-    return remote||!!nativeGetter.call(this);
+    // During online play all controls come through the same network input state.
+    // Falling back to a second local keyboard poll can double-trigger or stick actions.
+    return window.__BSO_ONLINE_MATCH ? remote : !!nativeGetter.call(this);
    }
   });
  }
