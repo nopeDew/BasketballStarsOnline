@@ -15,22 +15,6 @@ jobs:
           node-version: 20
       - name: Install dependencies and patch the original game
         run: npm install
-      - name: Inspect original controller and game-core update paths
-        run: |
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const source = fs.readFileSync('engine-source/basketball_legends_2019.f.js', 'utf8');
-          const arrayStart = source.indexOf("}([function(t, e, i) {");
-          if (arrayStart < 0) throw new Error('Could not locate webpack module array.');
-          const moduleSource = source.slice(arrayStart + "}([".length);
-          const modules = moduleSource.split(/\n, function\([^)]*\) \{\n/);
-          console.log('Original module count:', modules.length);
-          for (const id of [25, 44, 85, 94]) {
-            const code = modules[id] || '';
-            console.log('\\n=== ORIGINAL MODULE ' + id + ' (' + code.length + ' chars) ===\\n');
-            console.log(code.length <= 7000 ? code : code.slice(-7000));
-          }
-          NODE
       - name: Check multiplayer scripts
         run: |
           node --check server.js
