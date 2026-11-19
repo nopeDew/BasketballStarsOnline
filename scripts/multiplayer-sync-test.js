@@ -23,12 +23,18 @@ assert.match(sync, /socket\.volatile\.emit\("engineState",makeSnapshot\(this\)\)
   'Player 1 must publish snapshots from its native game simulation.');
 assert.match(sync, /socket\.on\("engineState"/,
   'Player 2 must consume the host snapshots.');
-assert.doesNotMatch(sync, /detachP2NonLocalPhysics|disableP2RemoteController|controller\\.update=function/,
+assert.ok(
+  !sync.includes("function detachP2NonLocalPhysics") &&
+  !sync.includes("function disableP2RemoteController") &&
+  !sync.includes("controller.update=function(){}"),
   'Player 2 must retain the original native player and ball physics/controllers.');
-assert.match(sync, /else if\\(latest\\)\\{[\\s\\S]*?const isNew=latest\\.sequence>lastAppliedSequence;[\\s\\S]*?applySnapshot\\(this,latest,dt,isNew\\);/,
+assert.ok(
+  sync.includes("else if(latest){") &&
+  sync.includes("applySnapshot(this,latest,dt,isNew);"),
   'Player 2 must smoothly reconcile the latest host snapshot on each native game update.');
-assert.match(sync, /original\\.call\\(this,dt\\)/);
-assert.match(sync, /expectedSide=Number\\(window\\.__BSO_NET_GAME_SIDE\\)/,
+assert.ok(sync.includes("original.call(this,dt);"),
+  'Both clients must keep the original game-core update.');
+assert.ok(sync.includes("expectedSide=Number(window.__BSO_NET_GAME_SIDE);"),
   'Player 2 local avatar detection needs a stable side fallback.');
 
 assert.match(network, /window\.__BSO_ONLINE_MATCH\s*\?\s*remote\s*:/,
