@@ -43,6 +43,7 @@ function controlsText(selectedLayout){
 }
 let layout=loadLayout(side);
 let bindings=loadBindings(side,layout);
+window.__BSO_NET_GAME_SIDE=side===1?-1:1;
 let localState={},remoteState={},capture=null,ready=false;
 window.__BSO_NET_LOCAL_SIDE=side;
 const inputs={1:{},2:{}},lastTap={1:{left:0,right:0},2:{left:0,right:0}},dashPulse={1:{left:false,right:false},2:{left:false,right:false}};
@@ -237,7 +238,7 @@ socket.on("connect",()=>{
 socket.on("connect_error",error=>status("Server connection failed · "+(error&&error.message||"retrying")));
 
 socket.on("engineRoomJoined",r=>{
- side=Number(r.side);remoteSide=side===1?2:1;window.__BSO_NET_LOCAL_SIDE=side;ready=true;
+ side=Number(r.side);remoteSide=side===1?2:1;window.__BSO_NET_LOCAL_SIDE=side;window.__BSO_NET_GAME_SIDE=side===1?-1:1;ready=true;
  layout=loadLayout(side);bindings=loadBindings(side,layout);
  const layoutSelect=document.getElementById("bso-layout");if(layoutSelect)layoutSelect.value=layout;
  const controls=document.getElementById("bso-controls");if(controls)controls.textContent=controlsText(layout);
