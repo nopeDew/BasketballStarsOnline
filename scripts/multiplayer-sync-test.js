@@ -34,8 +34,8 @@ assert.ok(
   'Player 2 must smoothly reconcile the latest host snapshot on each native game update.');
 assert.ok(sync.includes("original.call(this,dt);"),
   'Both clients must keep the original game-core update.');
-assert.ok(sync.includes("expectedSide=Number(window.__BSO_NET_GAME_SIDE);"),
-  'Player 2 local avatar detection needs a stable side fallback.');
+assert.ok(sync.includes("player.controller instanceof Controller"),
+  'Player 2 local avatar detection must identify its native PlayerController2 instance.');
 
 assert.match(network, /window\.__BSO_ONLINE_MATCH\s*\?\s*remote\s*:/,
   'Online controls must pass through the shared network InputManager state.');
@@ -46,4 +46,4 @@ assert.match(patch, /renderer: Phaser\.AUTO,/,
 assert.doesNotMatch(patch, /T\.PlayerController2\.prototype\.update\s*=/,
   'Preserve the original Player 2 controller update method.');
 
-console.log('Original host-physics and Player 2 load-reduction checks passed.');
+console.log('Original host-physics and native Player 2 controller checks passed.');
