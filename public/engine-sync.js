@@ -9,7 +9,7 @@ let latest=null,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0,
 let ownerTrackingInstalled=false;
 const snapshotBuffer=[];
 const INTERPOLATION_DELAY_MS=50;
-const diag={fps:0,phaserFps:0,desiredFps:0,framePacing:"40 FPS · host-matched",gameUps:0,coreMs:0,syncMs:0,packetHz:0,sentHz:0,renderHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
+const diag={fps:0,phaserFps:0,desiredFps:0,framePacing:"60 FPS render · 40 Hz physics",gameUps:0,coreMs:0,syncMs:0,packetHz:0,sentHz:0,renderHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,renderer:"unknown",renderHook:"waiting",interpolationDelayMs:INTERPOLATION_DELAY_MS,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,hostBallState:null,hostHolder:null,localHolders:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,renderFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,snapshotSentCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
@@ -365,9 +365,8 @@ function renderInterpolatedSnapshot(core,now){
  const localPlayer=players.find(isLocalPlayer)||null;
  for(const player of players){
   if(localPlayer&&player===localPlayer)continue;
-  // Only this browser's own avatar runs local player physics. The opponent is
-  // a server-positioned presentation object, so keep its body out of Nape.
-  if(player&&player.body&&player.body.space!==null)player.body.space=null;
+  // Remote bodies are detached before the native physics step in the core
+  // update. Rendering only changes their graphics; it never edits Nape state.
   const graphic=player&&player.graphic;
   if(!graphic)continue;
   const key=player.SIDE+":"+player.playerNo;
@@ -480,12 +479,25 @@ function applyServerWorldState(core,s){
  core.isAlleyOop=s.ballState==="alleyOop";
  const inv=window.__BSO_Inventory,md=inv&&inv.instance&&inv.instance.matchData;
  if(md&&Array.isArray(s.scores)&&s.scores.length===2){
-  md.matchScore[0]=s.scores[0];md.matchScore[1]=s.scores[1];
-  if(core.infoPanel&&typeof core.infoPanel.updateScore==="function")core.infoPanel.updateScore(s.scores[0],s.scores[1]);
-  if(core.timer&&typeof core.timer.updateScore==="function"){
-   core.timer.updateScore(1,s.scores[0]);core.timer.updateScore(-1,s.scores[1]);
+  const changed=md.matchScore[0]!==s.scores[0]||md.matchScore[1]!==s.scores[1];
+  if(changed){
+   md.matchScore[0]=s.scores[0];md.matchScore[1]=s.scores[1];
+   if(core.infoPanel&&typeof core.infoPanel.updateScore==="function")core.infoPanel.updateScore(s.scores[0],s.scores[1]);
+   if(core.timer&&typeof core.timer.updateScore==="function"){
+    core.timer.updateScore(1,s.scores[0]);core.timer.updateScore(-1,s.scores[1]);
+   }
   }
  }
+}
+function detachRemotePlayerBodies(core){
+ const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
+ const local=players.find(isLocalPlayer)||null;
+ for(const player of players){
+  if(!player||player===local)continue;
+  const body=player.body;
+  if(body&&body.space!==null)body.space=null;
+ }
+ return local;
 }
 function install(){
  const C=window.__BSO_MainGameCore;
@@ -496,12 +508,14 @@ function install(){
   installBallOwnerTracking(this);
   installServerBallAuthority(this);
   if(this.ball&&this.ball.body&&this.ball.body.space!==null)this.ball.body.space=null;
+  // Run only the locally controlled player's Nape body in this browser.
+  // Detach the opponent before and after the native step, not during rendering.
+  const local=detachRemotePlayerBodies(this);
   const coreStart=performance.now();
   const result=original.call(this,dt);
   const coreEnd=performance.now();
   if(this.ball&&this.ball.body&&this.ball.body.space!==null)this.ball.body.space=null;
-  const allPlayers=[...(this.playersLeft||[]),...(this.playersRight||[])];
-  const local=allPlayers.find(isLocalPlayer);
+  detachRemotePlayerBodies(this);
   if(local&&local.body&&socket.connected){
    const body=local.body,position=body.position,velocity=body.velocity;
    const blockShape=!!(local.block&&body.shapes&&typeof body.shapes.has==="function"&&body.shapes.has(local.block));
@@ -519,7 +533,10 @@ function install(){
    });
    snapshotSentCount++;
   }
-  if(latest)applyServerWorldState(this,latest);
+  if(latest&&latest.sequence>lastAppliedSequence){
+   lastAppliedSequence=latest.sequence;
+   applyServerWorldState(this,latest);
+  }
   const syncEnd=performance.now();
   gameUpdates++;
   coreMsTotal+=coreEnd-coreStart;
