@@ -31,6 +31,8 @@ assert.match(sync, /detachP2NonLocalPhysics\(this\);[\s\S]*?original\.call\(this
   'Remote body work must be removed before the native game update.');
 assert.match(sync, /controller\.update=function\(\)\{\}/,
   'Only the remote controller update should be skipped on P2.');
+assert.match(sync, /if\(!local\)\{[\s\S]*?local avatar unknown[\s\S]*?return;/,
+  'Never detach either player if P2 local-avatar detection fails.');
 assert.match(sync, /latest&&latest\.sequence>lastAppliedSequence/,
   'P2 should reconcile only on fresh host snapshots.');
 assert.match(sync, /original\.call\(this,dt\)/);
