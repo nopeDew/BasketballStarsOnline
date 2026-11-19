@@ -36,7 +36,7 @@ source = source.slice(0, inputAt) + source.slice(inputAt).replace(inputAnchor,
   '}'
 );
 
-// Export the original match core and patch the real Player 2 controller to consume side-2 inputs.
+// Export the original match core and controller classes. Keep Player 2's native update method intact; the InputManager getters below supply networked controls.
 source = replaceUnique(
   source,
   '    e.PlayerController2 = T.PlayerController2;',
