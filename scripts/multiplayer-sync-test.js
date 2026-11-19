@@ -29,6 +29,20 @@ assert.match(sync, /INTERPOLATION_DELAY_MS=50/,
   'Server world state should use a short render buffer.');
 assert.match(sync, /player\.body\.space!==null\)player\.body\.space=null/,
   'The remote player body must not run a second local physics simulation.');
+assert.match(sync, /const local=detachRemotePlayerBodies\(this\);[\s\S]*?original\.call\(this,dt\)/,
+  'Remote bodies must be detached before the native physics step.');
+assert.match(sync, /latest&&latest\.sequence>lastAppliedSequence/,
+  'Discrete server state should only be applied once per new snapshot.');
+assert.match(sync, /const changed=md\.matchScore\[0\]!==s\.scores\[0\]/,
+  'Score UI must not redraw when the server score is unchanged.');
+assert.doesNotMatch(sync, /if\(player&&player\.body&&player\.body\.space!==null\)player\.body\.space=null/,
+  'Nape body changes must not happen during the pre-render callback.');
+assert.match(patch, /this\.game\.time\.desiredFps = 60/,
+  'Phaser should render at 60 FPS.');
+assert.match(patch, /DESIRED_FRAME_TIME = \.025/,
+  'The original 40 Hz fixed physics step must be preserved.');
+assert.match(server, /this\.game\.time\.desiredFps = 60/,
+  'The server must only serve the 60 FPS patched bundle.');
 assert.match(sync, /player===localPlayer\)continue/,
   'Server contact-state updates must not overwrite the local controller state.');
 
