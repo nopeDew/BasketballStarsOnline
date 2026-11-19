@@ -46,22 +46,7 @@ source = replaceUnique(
   '        window.__BSO_Inventory = g.Inventory;\n' +
   '        window.__BSO_PlayerController = P.PlayerController;\n' +
   '        window.__BSO_PlayerController2 = T.PlayerController2;\n' +
-  '        /* BSO_ONLINE_P2_CONTROLLER */\n' +
-  '        if (T.PlayerController2 && T.PlayerController2.prototype) {\n' +
-  '            var bsoNativeP2Update = T.PlayerController2.prototype.update;\n' +
-  '            T.PlayerController2.prototype.update = function() {\n' +
-  '                var inputs = window.__BSO_NET_INPUTS;\n' +
-  '                if (!inputs || !inputs[2]) return bsoNativeP2Update.apply(this, arguments);\n' +
-  '                var input = inputs[2];\n' +
-  '                this.currentMove = (input.right ? 1 : 0) - (input.left ? 1 : 0);\n' +
-  '                this.currentDash = window.__BSO_CONSUME_NET_DASH ? window.__BSO_CONSUME_NET_DASH(2) : 0;\n' +
-  '                this.currentJump = !!input.jump;\n' +
-  '                this.currentAction = !!input.shoot;\n' +
-  '                this.currentSuper = !!input.super;\n' +
-  '                this.currentBlockOrPump = !!input.down;\n' +
-  '                window.__BSO_P2_CONTROLLER_DEBUG = {move:this.currentMove,jump:this.currentJump,shoot:this.currentAction,block:this.currentBlockOrPump,special:this.currentSuper,at:Date.now()};\n' +
-  '            };\n' +
-  '        }\n' +
+  '        /* BSO_ONLINE_P2_CONTROLLER_NATIVE: keep the original controller update; network input is injected through InputManager. */\n' +
   '    }',
   'original game core export block'
 );
