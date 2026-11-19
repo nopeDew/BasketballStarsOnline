@@ -5,7 +5,7 @@ const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
 let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
-const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null};
+const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null,p2LocalController:"unknown",p2RemoteController:"not found",p2RemoteBody:"unknown"};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
 const clamp=n=>Number.isFinite(n)?n:0;
@@ -49,6 +49,8 @@ function startDiagnostics(){
     "Remote input packets: "+remote,
     "P2 controller: "+(controller?"active":"not reporting"),
     "Local P2 avatar: "+(diag.localPlayerFound?"prediction active":"not found"),
+    "P2 remote controller: "+diag.p2RemoteController,
+    "P2 remote physics body: "+diag.p2RemoteBody,
     "Local avatar Y: "+(diag.localPlayerY===null?"n/a":diag.localPlayerY),
     "Grounded: "+(diag.localPlayerGrounded===null?"n/a":diag.localPlayerGrounded),
     "Vertical velocity: "+(diag.localPlayerVy===null?"n/a":diag.localPlayerVy),
@@ -224,17 +226,36 @@ function applySnapshot(core,s,dt,applyUi){
   }
  }
 }
+function disableP2RemoteController(player,local){
+ if(side!==2||!player||player===local)return false;
+ const controller=player.controller;
+ if(!controller||typeof controller.update!=="function")return false;
+ if(controller.__bsoRemoteControllerSkipped)return true;
+ // The remote character is display-only on P2: its actions, movement and
+ // animation state arrive in P1 snapshots. Running its full native controller
+ // locally duplicates work and can contend with P2's own controller.
+ controller.__bsoOriginalUpdate=controller.update;
+ controller.update=function(){};
+ controller.__bsoRemoteControllerSkipped=true;
+ return true;
+}
 function detachP2NonLocalPhysics(core){
  if(side!==2||!core)return;
  const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
  const local=players.find(isLocallyControlledP2)||null;
+ diag.p2LocalController=local&&local.controller?"native":"not found";
+ let remoteControllerDisabled=false,remoteBodyDetached=false;
  for(const player of players){
   if(!player||player===local)continue;
+  remoteControllerDisabled=disableP2RemoteController(player,local)||remoteControllerDisabled;
   const body=player.body;
-  if(body&&body.space!==null)body.space=null;
+  if(body&&body.space!==null){body.space=null;remoteBodyDetached=true;}
+  else if(body)remoteBodyDetached=true;
  }
  const ball=core.ball;
  if(ball&&ball.body&&ball.body.space!==null)ball.body.space=null;
+ diag.p2RemoteController=remoteControllerDisabled?"disabled":"not found";
+ diag.p2RemoteBody=remoteBodyDetached?"detached":"not found";
 }
 function install(){
  const C=window.__BSO_MainGameCore;
@@ -256,11 +277,10 @@ function install(){
    // The original Basketball Legends gameplay loop advances in 25 ms fixed steps (40 Hz).
    // Publish at the same cadence so Player 2 isn't interpolating against a slower 30 Hz stream.
    if(now-lastSend>=25){lastSend=now;socket.volatile.emit("engineState",makeSnapshot(this));}
-  }else if(latest){
-   const isNew=latest.sequence>lastAppliedSequence;
-   if(isNew)lastAppliedSequence=latest.sequence;
-   // Reconcile smoothly every simulation tick; update score/match flags only on new packets.
-   applySnapshot(this,latest,dt,isNew);
+  }else if(latest&&latest.sequence>lastAppliedSequence){
+   lastAppliedSequence=latest.sequence;
+   // Reconcile only when a fresh host packet arrives, not on every local tick.
+   applySnapshot(this,latest,dt,true);
    detachP2NonLocalPhysics(this);
   }
   const syncEnd=performance.now();
