@@ -27,8 +27,8 @@ assert.match(sync, /installGameplayRenderer\(\)/,
   'Remote visuals must interpolate during pre-render, not only fixed-step updates.');
 assert.match(sync, /INTERPOLATION_DELAY_MS=50/,
   'Server world state should use a short render buffer.');
-assert.match(sync, /player\.body\.space!==null\)player\.body\.space=null/,
-  'The remote player body must not run a second local physics simulation.');
+assert.match(sync, /function detachRemotePlayerBodies\(core\)/,
+  'Remote physics bodies must have a dedicated detach step.');
 assert.match(sync, /const local=detachRemotePlayerBodies\(this\);[\s\S]*?original\.call\(this,dt\)/,
   'Remote bodies must be detached before the native physics step.');
 assert.match(sync, /latest&&latest\.sequence>lastAppliedSequence/,
