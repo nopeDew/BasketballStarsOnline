@@ -25,6 +25,14 @@ assert.match(sync, /socket\.on\("engineState"/,
   'Player 2 must consume the host snapshots.');
 assert.match(sync, /function detachP2NonLocalPhysics\(core\)/,
   'Player 2 must avoid simulating the remote avatar and ball locally.');
+assert.match(sync, /function disableP2RemoteController\(player,local\)/,
+  'Player 2 must skip its duplicate remote character controller.');
+assert.match(sync, /detachP2NonLocalPhysics\(this\);[\s\S]*?original\.call\(this,dt\)/,
+  'Remote body work must be removed before the native game update.');
+assert.match(sync, /controller\.update=function\(\)\{\}/,
+  'Only the remote controller update should be skipped on P2.');
+assert.match(sync, /latest&&latest\.sequence>lastAppliedSequence/,
+  'P2 should reconcile only on fresh host snapshots.');
 assert.match(sync, /original\.call\(this,dt\)/);
 assert.match(sync, /if\(side===2\)[\s\S]*?b\.space=null[\s\S]*?applyObject\(ball,item,1,null\)/,
   'Player 2 must render the host ball without running local ball physics.');
