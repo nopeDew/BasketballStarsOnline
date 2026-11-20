@@ -7,8 +7,8 @@ An online 1v1 integration for the original **Basketball Legends 2019** game. The
 - **Player 1 runs the original game's full native simulation.** Its physics, ball possession, steals, shots, blocks, rims, backboards, nets, and scoring remain in the original browser game engine.
 - The Node server is only a room/input/state relay. It does not run a second Nape world or recreate the game's physics.
 - Player 1 sends compact match snapshots to Player 2 at the original 40 Hz game cadence. Snapshot messages use volatile delivery, so stale frames are dropped instead of queued.
-- Player 2 keeps the original native player controllers and physics bodies active, including the ball and both players. This preserves the game's normal collisions, possession checks, and player interactions.
-- Player 2 smoothly reconciles remote transforms and possession/score state from Player 1's latest snapshot on each native game update. The browser uses the original automatic renderer selection and 40 Hz timing.
+- Player 2 keeps its native player controllers, collision bodies, and ball simulation active. Host snapshots update the remote presentation and match/possession state without repeatedly overwriting Player 2's live physics positions, velocities, or collision shapes.
+- Player 2 reconciles the visible remote transforms on each native game update. The browser uses the original automatic renderer selection and 40 Hz timing.
 - Both players' controls are relayed into the original InputManager. Input changes are sent immediately, with a low-rate heartbeat to repair missed key-up events.
 
 This is **host-authoritative original-engine simulation**, not dedicated-server physics. The server relays Player 1's original simulation; it does not calculate player movement or ball physics itself.
