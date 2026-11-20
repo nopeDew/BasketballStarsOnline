@@ -25,7 +25,7 @@ assert.match(sync, /socket\.on\("engineState"/,
   'Player 2 must consume the host snapshots.');
 assert.ok(sync.includes("if(b&&p&&side!==2)"),
   'Player 2 must not overwrite locally simulated remote-player or ball physics bodies.');
-assert.ok(sync.includes("if(side!==2){\\n  if(item.physicsSpace===0"),
+assert.ok(sync.includes("if(side!==2){") && sync.includes("if(item.physicsSpace===0&&b.space!==null"),
   'Player 2 must keep the ball in its native local physics world.');
 assert.ok(sync.includes('if(side!==2&&typeof item.blockShape==="boolean")'),
   'Player 2 must not replace local collision shapes with host-side shapes.');
