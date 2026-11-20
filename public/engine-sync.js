@@ -108,8 +108,6 @@ function setVec(vec,x,y){
 function applyObject(o,item,alpha,coreLocalPlayer){
  if(!o||!item)return;
  const b=o.body,g=o.graphic,p=item.body;
- // Blend authoritative corrections into Player 2's local prediction instead of
- // teleporting every body to a new 30 Hz snapshot.
  // Player 2 runs its own native Nape step. Never pull live physics bodies
  // toward a second simulation; reconcile the remote presentation below instead.
  if(b&&p&&side!==2){
