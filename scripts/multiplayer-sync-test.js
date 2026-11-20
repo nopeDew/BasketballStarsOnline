@@ -23,11 +23,11 @@ assert.match(sync, /socket\.volatile\.emit\("engineState",makeSnapshot\(this\)\)
   'Player 1 must publish snapshots from its native game simulation.');
 assert.match(sync, /socket\.on\("engineState"/,
   'Player 2 must consume the host snapshots.');
-assert.match(sync, /if\\(b&&p&&side!==2\\)/,
+assert.ok(sync.includes("if(b&&p&&side!==2)"),
   'Player 2 must not overwrite locally simulated remote-player or ball physics bodies.');
-assert.match(sync, /if\\(side!==2\\)\\{[\\s\\S]*?item\\.physicsSpace===0/,
+assert.ok(sync.includes("if(side!==2){\\n  if(item.physicsSpace===0"),
   'Player 2 must keep the ball in its native local physics world.');
-assert.match(sync, /side!==2&&typeof item\\.blockShape==="boolean"/,
+assert.ok(sync.includes('if(side!==2&&typeof item.blockShape==="boolean")'),
   'Player 2 must not replace local collision shapes with host-side shapes.');
 assert.ok(
   !sync.includes("function detachP2NonLocalPhysics") &&
