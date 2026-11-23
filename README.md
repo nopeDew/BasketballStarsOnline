@@ -7,8 +7,8 @@ An online 1v1 integration for the original **Basketball Legends 2019** game. The
 - **Player 1 runs the original game's full native simulation.** Its physics, ball possession, steals, shots, blocks, rims, backboards, nets, and scoring remain in the original browser game engine.
 - The Node server is only a room/input/state relay. It does not run a second Nape world or recreate the game's physics.
 - Player 1 sends compact match snapshots to Player 2 at the original 40 Hz game cadence. Snapshot messages use volatile delivery, so stale frames are dropped instead of queued.
-- Player 2 keeps its native player controllers, collision bodies, and ball simulation active. Host snapshots update the remote presentation and match/possession state without repeatedly overwriting Player 2's live physics positions, velocities, or collision shapes.
-- Player 2 reconciles the visible remote transforms on each native game update. The browser uses the original automatic renderer selection and 40 Hz timing.
+- Player 2 is a presentation client, not a second simulation. It sends its controls to Player 1, disables its duplicate physics step and player-controller actions, and renders both players and the ball from the host's authoritative snapshots.
+- Player 2 interpolates between recent snapshots and mirrors the host's body positions, velocities, animation states, facing direction, possession, and block state. Its original renderer and 40 Hz game timing remain unchanged.
 - Both players' controls are relayed into the original InputManager. Input changes are sent immediately, with a low-rate heartbeat to repair missed key-up events.
 
 This is **host-authoritative original-engine simulation**, not dedicated-server physics. The server relays Player 1's original simulation; it does not calculate player movement or ball physics itself.
@@ -36,4 +36,4 @@ Use a Node web service with `npm install` as the build command and `npm start` a
 
 ## Verification
 
-The GitHub Actions workflow installs and patches the original game, checks JavaScript syntax, and runs multiplayer architecture regression checks, including preservation of Player 2's native physics and controller updates. A real two-device match is still needed to verify control feel and latency after deployment.
+The GitHub Actions workflow installs and patches the original game, checks JavaScript syntax, and runs multiplayer architecture regression checks, including Player 2's presentation-only architecture and authoritative body updates. A real two-device match is still needed to verify control feel and latency after deployment.

@@ -23,20 +23,20 @@ assert.match(sync, /socket\.volatile\.emit\("engineState",makeSnapshot\(this\)\)
   'Player 1 must publish snapshots from its native game simulation.');
 assert.match(sync, /socket\.on\("engineState"/,
   'Player 2 must consume the host snapshots.');
-assert.ok(sync.includes("if(b&&p&&side!==2)"),
-  'Player 2 must not overwrite locally simulated remote-player or ball physics bodies.');
-assert.ok(sync.includes("if(side!==2){") && sync.includes("if(item.physicsSpace===0&&b.space!==null"),
-  'Player 2 must keep the ball in its native local physics world.');
-assert.ok(sync.includes('if(side!==2&&typeof item.blockShape==="boolean"'),
-  'Player 2 must not replace local collision shapes with host-side shapes.');
-assert.ok(
-  !sync.includes("function detachP2NonLocalPhysics") &&
-  !sync.includes("function disableP2RemoteController") &&
-  !sync.includes("controller.update=function(){}"),
-  'Player 2 must retain the original native player and ball physics/controllers.');
+assert.ok(sync.includes("if(b&&p){"),
+  'Player 2 must apply authoritative host body transforms for both players and the ball.');
+assert.ok(sync.includes("function installP2PresentationOnly(core)") &&
+  sync.includes('physics.update=function(){}') &&
+  sync.includes("this.currentMove=0;this.currentDash=0;this.currentJump=false;"),
+  'Player 2 must not run a duplicate physics or controller simulation.');
+assert.ok(!sync.includes("if(isLocallyControlledP2(player))continue;") &&
+  sync.includes("applyObject(player,item,alpha,null);"),
+  'The authoritative host snapshot must update Player 2’s own avatar too.');
+assert.ok(sync.includes('if(typeof item.blockShape==="boolean"'),
+  'Player 2 must mirror host block state.');
 assert.ok(
   sync.includes("function interpolateSnapshot(previous,current,t)") &&
-  sync.includes("const renderAt=performance.now()-50;") &&
+  sync.includes("const renderAt=performance.now()-15;") &&
   sync.includes("previousSnapshot=latest;previousSnapshotAt=latestSnapshotAt;"),
   'Player 2 must interpolate between buffered host snapshots instead of chasing discrete updates.');
 assert.ok(sync.includes("applySnapshot(this,renderSnapshot,dt,isNew);"),
@@ -52,7 +52,9 @@ assert.match(patch, /this\.game\.time\.desiredFps = 40/,
   'Keep the original 40 Hz timing.');
 assert.match(patch, /renderer: Phaser\.AUTO,/,
   'Keep the original automatic renderer selection.');
-assert.doesNotMatch(patch, /T\.PlayerController2\.prototype\.update\s*=/,
-  'Preserve the original Player 2 controller update method.');
+assert.match(patch, /window\.__BSO_PlayerObject = b\.PlayerObject/,
+  'Expose the original player class so Player 2 can disable duplicate local simulation.');
+assert.match(network, /setInterval\(\(\)=>sendLocal\(\),100\)/,
+  'Reliable input-state heartbeats must repair missed key-up events.');
 
 console.log('Original host-physics and native Player 2 controller checks passed.');

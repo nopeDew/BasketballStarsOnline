@@ -305,7 +305,7 @@ setInterval(()=>{
  if(panel&&window.__BSO_GAMEPLAY_ACTIVE)panel.classList.add("bso-gameplay-hidden");
 },100);
 // Input changes are sent immediately; this low-rate volatile heartbeat only repairs lost key-up state.
-setInterval(()=>sendLocal(true),250);
+setInterval(()=>sendLocal(),100);
 setInterval(()=>{
  const el=document.getElementById("bso-p2-debug");if(!el)return;
  const input=window.__BSO_NET_INPUTS&&window.__BSO_NET_INPUTS[2]||{};

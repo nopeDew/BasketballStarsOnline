@@ -46,6 +46,7 @@ source = replaceUnique(
   '        window.__BSO_Inventory = g.Inventory;\n' +
   '        window.__BSO_PlayerController = P.PlayerController;\n' +
   '        window.__BSO_PlayerController2 = T.PlayerController2;\n' +
+  '        window.__BSO_PlayerObject = b.PlayerObject;\n' +
   '        /* BSO_ONLINE_P2_CONTROLLER_NATIVE: keep the original controller update; network input is injected through InputManager. */\n' +
   '    }',
   'original game core export block'
@@ -174,8 +175,7 @@ source = replaceUnique(
   'original gameplay state'
 );
 
-// Preserve the original per-render physics-to-graphic update for both clients.
-// Player 2 predicts its own avatar locally, while host snapshots correct the opponent and ball.
+// Player 1 owns gameplay simulation. Player 2 renders authoritative host snapshots.
 
 // Keep the original game's automatic renderer selection and frame pacing.
 if (!source.includes('renderer: Phaser.WEBGL,')) throw new Error('Could not locate the original renderer setting.');

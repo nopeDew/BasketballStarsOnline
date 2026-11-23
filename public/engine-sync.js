@@ -68,7 +68,7 @@ function readObject(o,index,typeIndex,core){
  const item={i:index,type:Number.isFinite(o&&o.objType)?o.objType:null,typeIndex};
  if(Number.isFinite(o&&o.SIDE))item.side=o.SIDE;
  if(Number.isFinite(o&&o.playerNo))item.playerNo=o.playerNo;
- if(g){item.x=clamp(g.x);item.y=clamp(g.y);item.r=clamp(g.rotation);item.visible=g.visible!==false;item.alpha=clamp(g.alpha);}
+ if(g){item.x=clamp(g.x);item.y=clamp(g.y);item.r=clamp(g.rotation);item.scaleX=clamp(g.scale&&g.scale.x);item.visible=g.visible!==false;item.alpha=clamp(g.alpha);}
  const body=readBody(b);if(body)item.body=body;
  if(b)item.physicsActive=b.space!==null;
  if(typeof o.state==="string")item.state=o.state;
@@ -108,9 +108,9 @@ function setVec(vec,x,y){
 function applyObject(o,item,alpha,coreLocalPlayer){
  if(!o||!item)return;
  const b=o.body,g=o.graphic,p=item.body;
- // Player 2 runs its own native Nape step. Never pull live physics bodies
- // toward a second simulation; reconcile the remote presentation below instead.
- if(b&&p&&side!==2){
+ // Player 2 is a presentation client: its physics step is disabled below, so
+ // every player and the ball can safely follow the authoritative host body.
+ if(b&&p){
   if(typeof item.physicsActive==="boolean"&&o!==coreLocalPlayer&&o.theSpace){
    if(!item.physicsActive&&b.space!==null)b.space=null;
    else if(item.physicsActive&&b.space===null)b.space=o.theSpace;
@@ -132,6 +132,7 @@ function applyObject(o,item,alpha,coreLocalPlayer){
   if(Number.isFinite(item.y))g.y=item.grounded===true?item.y:(Number.isFinite(g.y)?g.y+(item.y-g.y)*alpha:item.y);
   if(Number.isFinite(item.r))g.rotation=Number.isFinite(g.rotation)?g.rotation+(item.r-g.rotation)*alpha:item.r;
   if(typeof item.visible==="boolean")g.visible=item.visible;
+  if(Number.isFinite(item.scaleX)&&g.scale)g.scale.x=item.scaleX;
   if(Number.isFinite(item.alpha))g.alpha=item.alpha;
  }
  if(typeof item.state==="string"&&o.state!==item.state){
@@ -143,7 +144,7 @@ function applyObject(o,item,alpha,coreLocalPlayer){
  }
  if(typeof item.grounded==="boolean")o.isGrounded=item.grounded;
  for(const flag of ["canAct","canTakeInHands","canDoAction","isBlockedOrPump","isSuperShot","needBlock","isUnderEmotion","readyForDash","readyForSuper","attackJump","canThrow","isRestart"]){if(typeof item[flag]==="boolean")o[flag]=item[flag];}
- if(side!==2&&typeof item.blockShape==="boolean"&&o.body&&o.blockBody&&o.body.shapes){const has=typeof o.body.shapes.has==="function"&&o.body.shapes.has(o.blockBody);if(item.blockShape&&!has&&typeof o.body.shapes.add==="function")o.body.shapes.add(o.blockBody);if(!item.blockShape&&has&&typeof o.body.shapes.remove==="function")o.body.shapes.remove(o.blockBody);if(item.blockShape&&Number.isFinite(o.blockMass))o.body.gravMass=o.blockMass;else if(!item.blockShape&&Number.isFinite(o.baseMass))o.body.gravMass=o.baseMass;}
+ if(typeof item.blockShape==="boolean"&&o.body&&o.blockBody&&o.body.shapes){const has=typeof o.body.shapes.has==="function"&&o.body.shapes.has(o.blockBody);if(item.blockShape&&!has&&typeof o.body.shapes.add==="function")o.body.shapes.add(o.blockBody);if(!item.blockShape&&has&&typeof o.body.shapes.remove==="function")o.body.shapes.remove(o.blockBody);if(item.blockShape&&Number.isFinite(o.blockMass))o.body.gravMass=o.blockMass;else if(!item.blockShape&&Number.isFinite(o.baseMass))o.body.gravMass=o.baseMass;}
  if(typeof item.waiting==="boolean")o.isWaiting=item.waiting;
  // Preserve the original game's actual possession flag, not just the ball's visual position.
 }
@@ -169,16 +170,13 @@ function applyBall(core,item,alpha,players){
   else if(!expected&&player.withBall&&typeof player.freeBall==="function")player.freeBall();
  }
  let transitioned=false;
- // P2 keeps its native ball body in its own physics world. The host snapshot
- // controls the rendered ball and possession state, not a second body simulation.
- if(side!==2){
-  if(item.physicsSpace===0&&b.space!==null&&typeof ball.removeFromPhysics==="function"){
+ // Match the host ball physics-space transitions on the presentation client.
+ if(item.physicsSpace===0&&b.space!==null&&typeof ball.removeFromPhysics==="function"){
    ball.removeFromPhysics();transitioned=true;
   }else if(item.physicsSpace===1&&ball.space1&&b.space!==ball.space1){
    b.space=ball.space1;ball.updateGraphic();ball.setVisibleOnframe=true;transitioned=true;
-  }else if(item.physicsSpace===2&&ball.space2&&b.space!==ball.space2){
-   b.space=ball.space2;ball.updateGraphic();ball.graphic.visible=true;transitioned=true;
-  }
+ }else if(item.physicsSpace===2&&ball.space2&&b.space!==ball.space2){
+  b.space=ball.space2;ball.updateGraphic();ball.graphic.visible=true;transitioned=true;
  }
  applyObject(ball,item,transitioned?1:alpha,null);
 }
@@ -220,9 +218,8 @@ function applySnapshot(core,s,dt,applyUi){
  for(const item of s.objects){
   const player=Number.isFinite(item.playerNo)&&Number.isFinite(item.side)?localPlayers.find(p=>p&&p.playerNo===item.playerNo&&p.SIDE===item.side):null;
   if(!player)continue;
-  // P2 predicts their own transform locally; possession is reconciled above.
-  if(isLocallyControlledP2(player))continue;
-  applyObject(player,item,alpha,localP2);
+  // Apply the host transform to both players, including Player 2 on its own screen.
+  applyObject(player,item,alpha,null);
  }
  if(applyUi){
   core.isPlaying=!!s.playing;core.isPaused=!!s.paused;core.isScored=!!s.scored;core.isWaiting=!!s.waiting;
@@ -237,6 +234,42 @@ function applySnapshot(core,s,dt,applyUi){
   }
  }
 }
+function installP2PresentationOnly(core){
+ if(side!==2||!window.__BSO_ONLINE_MATCH||!core)return;
+ // Player 1 is the sole simulation authority. Player 2 still advances UI and
+ // animation clocks, but never runs a second copy of gameplay physics or input.
+ for(const name of ["physics","physics2"]){
+  const physics=core[name];
+  if(physics&&typeof physics.update==="function"&&!physics.__bsoRemotePresentation){
+   physics.update=function(){};
+   physics.__bsoRemotePresentation=true;
+  }
+ }
+ const Player=window.__BSO_PlayerObject;
+ const proto=Player&&Player.prototype;
+ if(proto&&!proto.__bsoRemotePresentation){
+  const originalFrame=proto.onFrameEvent;
+  if(typeof originalFrame==="function")proto.onFrameEvent=function(){
+   if(side===2&&window.__BSO_ONLINE_MATCH)return;
+   return originalFrame.apply(this,arguments);
+  };
+  proto.__bsoRemotePresentation=true;
+ }
+ for(const Controller of [window.__BSO_PlayerController,window.__BSO_PlayerController2]){
+  const controllerProto=Controller&&Controller.prototype;
+  if(!controllerProto||controllerProto.__bsoRemotePresentation)continue;
+  const original=controllerProto.update;
+  if(typeof original==="function")controllerProto.update=function(){
+   if(side===2&&window.__BSO_ONLINE_MATCH){
+    this.currentMove=0;this.currentDash=0;this.currentJump=false;
+    this.currentAction=false;this.currentSuper=false;this.currentBlockOrPump=false;
+    return;
+   }
+   return original.apply(this,arguments);
+  };
+  controllerProto.__bsoRemotePresentation=true;
+ }
+}
 function install(){
  const C=window.__BSO_MainGameCore;
  if(!C||!C.prototype||C.prototype.__bsoOnlinePatched)return false;
@@ -244,6 +277,7 @@ function install(){
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
   const coreStart=performance.now();
+  if(side===2)installP2PresentationOnly(this);
   original.call(this,dt);
   const coreEnd=performance.now();
   if(!this.objects||!this.objects.length)return;
@@ -260,7 +294,7 @@ function install(){
    // interpolated instead of chasing a succession of discrete positions.
    let renderSnapshot=latest;
    if(previousSnapshot&&latestSnapshotAt>previousSnapshotAt){
-    const renderAt=performance.now()-50;
+    const renderAt=performance.now()-15;
     const amount=Math.max(0,Math.min(1,(renderAt-previousSnapshotAt)/(latestSnapshotAt-previousSnapshotAt)));
     renderSnapshot=interpolateSnapshot(previousSnapshot,latest,amount);
    }
