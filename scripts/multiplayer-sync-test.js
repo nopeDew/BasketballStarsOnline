@@ -35,9 +35,12 @@ assert.ok(
   !sync.includes("controller.update=function(){}"),
   'Player 2 must retain the original native player and ball physics/controllers.');
 assert.ok(
-  sync.includes("else if(latest){") &&
-  sync.includes("applySnapshot(this,latest,dt,isNew);"),
-  'Player 2 must smoothly reconcile the latest host snapshot on each native game update.');
+  sync.includes("function interpolateSnapshot(previous,current,t)") &&
+  sync.includes("const renderAt=performance.now()-50;") &&
+  sync.includes("previousSnapshot=latest;previousSnapshotAt=latestSnapshotAt;"),
+  'Player 2 must interpolate between buffered host snapshots instead of chasing discrete updates.');
+assert.ok(sync.includes("applySnapshot(this,renderSnapshot,dt,isNew);"),
+  'Player 2 must apply the interpolated snapshot on each native game update.');
 assert.ok(sync.includes("original.call(this,dt);"),
   'Both clients must keep the original game-core update.');
 assert.ok(sync.includes("player.controller instanceof Controller"),
