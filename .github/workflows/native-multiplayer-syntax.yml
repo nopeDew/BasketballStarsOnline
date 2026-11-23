@@ -23,3 +23,13 @@ jobs:
           node --check scripts/patch-original-game.js
           node --check scripts/multiplayer-sync-test.js
           node scripts/multiplayer-sync-test.js
+      - name: Export original engine source for multiplayer diagnosis
+        if: always()
+        run: |
+          zip -q -j /tmp/bso-engine-source.zip engine-source/basketball_legends_2019.f.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: original-engine-source
+          path: /tmp/bso-engine-source.zip
+          retention-days: 1
