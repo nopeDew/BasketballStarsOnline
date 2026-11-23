@@ -42,8 +42,12 @@ assert.ok(
   sync.includes("function sampleSnapshotBuffer(now)") &&
   sync.includes("snapshotBuffer.push({state,receivedAt});"),
   'Player 2 must interpolate using a jitter-tolerant rolling snapshot buffer.');
-assert.ok(sync.includes("applySnapshot(this,renderSnapshot,dt,isNew);"),
-  'Player 2 must apply the interpolated snapshot on each native game update.');
+assert.ok(sync.includes("function installP2RenderLoop()") &&
+  sync.includes("State.prototype.update=function(){") &&
+  sync.includes("applySnapshot(core,renderSnapshot,16.6667,isNew);"),
+  'Player 2 must apply interpolated host snapshots after the original per-render update.');
+assert.ok(!sync.includes("applySnapshot(this,renderSnapshot,dt,isNew);"),
+  'Player 2 must not apply interpolated snapshots only inside the 40 Hz simulation loop.');
 assert.ok(sync.includes("original.call(this,dt);"),
   'Both clients must keep the original game-core update.');
 assert.ok(sync.includes("player.controller instanceof Controller"),

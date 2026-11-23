@@ -296,10 +296,33 @@ function installP2PresentationOnly(core){
   }
  }
 }
+function installP2RenderLoop(){
+ if(side!==2||!window.__BSO_ONLINE_MATCH)return false;
+ const State=window.__BSO_GameplayState;
+ if(!State||!State.prototype||State.prototype.__bsoP2RenderWrapped)return false;
+ const original=State.prototype.update;
+ if(typeof original!=="function")return false;
+ State.prototype.update=function(){
+  const result=original.apply(this,arguments);
+  const core=window.__BSO_MainGameCore&&window.__BSO_MainGameCore.instance;
+  if(core&&latest){
+   const isNew=latest.sequence>lastAppliedSequence;
+   if(isNew)lastAppliedSequence=latest.sequence;
+   // This wrapper runs once per Phaser render, after the original game's
+   // fixed-step simulation and physics-to-graphic update have completed.
+   const renderSnapshot=sampleSnapshotBuffer(performance.now());
+   applySnapshot(core,renderSnapshot,16.6667,isNew);
+  }
+  return result;
+ };
+ State.prototype.__bsoP2RenderWrapped=true;
+ return true;
+}
 function install(){
  const C=window.__BSO_MainGameCore;
  if(!C||!C.prototype||C.prototype.__bsoOnlinePatched)return false;
  installP2ControllerHooks();
+ if(side===2&&!installP2RenderLoop())return false;
  const original=C.prototype.update;
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
@@ -314,14 +337,6 @@ function install(){
    // The original Basketball Legends gameplay loop advances in 25 ms fixed steps (40 Hz).
    // Publish at the same cadence so Player 2 isn't interpolating against a slower 30 Hz stream.
    if(now-lastSend>=25){lastSend=now;socket.volatile.emit("engineState",makeSnapshot(this));}
-  }else if(latest){
-   const isNew=latest.sequence>lastAppliedSequence;
-   if(isNew)lastAppliedSequence=latest.sequence;
-   // Sample a 50 ms buffered timeline at the P2 render cadence. The queue
-   // guarantees interpolation between snapshots instead of periodic frame holds.
-   const renderSnapshot=sampleSnapshotBuffer(performance.now());
-   // Update score/match flags only on new packets; visual transforms are sampled each tick.
-   applySnapshot(this,renderSnapshot,dt,isNew);
   }
   const syncEnd=performance.now();
   gameUpdates++;
