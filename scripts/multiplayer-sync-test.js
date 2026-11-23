@@ -25,7 +25,9 @@ assert.match(sync, /socket\.on\("engineState"/,
   'Player 2 must consume the host snapshots.');
 assert.ok(sync.includes("if(b&&p){"),
   'Player 2 must apply authoritative host body transforms for both players and the ball.');
-assert.ok(sync.includes("function installP2PresentationOnly(core)") &&
+assert.ok(sync.includes("function installP2ControllerHooks()") &&
+  sync.includes("installP2ControllerHooks();") &&
+  sync.includes("function installP2PresentationOnly(core)") &&
   sync.includes('physics.update=function(){}') &&
   sync.includes("this.currentMove=0;this.currentDash=0;this.currentJump=false;"),
   'Player 2 must not run a duplicate physics or controller simulation.');

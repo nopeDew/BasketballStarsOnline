@@ -234,17 +234,10 @@ function applySnapshot(core,s,dt,applyUi){
   }
  }
 }
-function installP2PresentationOnly(core){
- if(side!==2||!window.__BSO_ONLINE_MATCH||!core)return;
- // Player 1 is the sole simulation authority. Player 2 still advances UI and
- // animation clocks, but never runs a second copy of gameplay physics or input.
- for(const name of ["physics","physics2"]){
-  const physics=core[name];
-  if(physics&&typeof physics.update==="function"&&!physics.__bsoRemotePresentation){
-   physics.update=function(){};
-   physics.__bsoRemotePresentation=true;
-  }
- }
+function installP2ControllerHooks(){
+ if(side!==2||!window.__BSO_ONLINE_MATCH)return;
+ // Install before player instances register DragonBones callbacks in the
+ // character-selection/game-start flow.
  const Player=window.__BSO_PlayerObject;
  const proto=Player&&Player.prototype;
  if(proto&&!proto.__bsoRemotePresentation){
@@ -270,9 +263,23 @@ function installP2PresentationOnly(core){
   controllerProto.__bsoRemotePresentation=true;
  }
 }
+function installP2PresentationOnly(core){
+ if(side!==2||!window.__BSO_ONLINE_MATCH||!core)return;
+ installP2ControllerHooks();
+ // Player 1 is the sole simulation authority. Player 2 still advances UI and
+ // animation clocks, but never runs a second copy of gameplay physics or input.
+ for(const name of ["physics","physics2"]){
+  const physics=core[name];
+  if(physics&&typeof physics.update==="function"&&!physics.__bsoRemotePresentation){
+   physics.update=function(){};
+   physics.__bsoRemotePresentation=true;
+  }
+ }
+}
 function install(){
  const C=window.__BSO_MainGameCore;
  if(!C||!C.prototype||C.prototype.__bsoOnlinePatched)return false;
+ installP2ControllerHooks();
  const original=C.prototype.update;
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
