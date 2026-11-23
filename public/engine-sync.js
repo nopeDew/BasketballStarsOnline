@@ -4,7 +4,7 @@ const socket=window.__BSO_SOCKET;
 const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
-let latest=null,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
+let latest=null,previousSnapshot=null,previousSnapshotAt=0,latestSnapshotAt=0,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
 const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
@@ -187,9 +187,28 @@ function isLocallyControlledP2(player){
  if(side!==2||!player||!player.controller||!Controller)return false;
  return player.controller instanceof Controller||player.controller.constructor===Controller;
 }
+function snapshotObjectKey(item){return Number.isFinite(item.side)&&Number.isFinite(item.playerNo)?item.side+":"+item.playerNo:String(item.i);}
+function blendNumber(a,b,t){return Number.isFinite(a)&&Number.isFinite(b)?a+(b-a)*t:b;}
+function interpolateItem(previous,current,t){
+ if(!previous||!current)return current;
+ const out={...current};
+ for(const key of ["x","y","r"])out[key]=blendNumber(previous[key],current[key],t);
+ if(previous.body&&current.body){
+  out.body={...current.body};
+  for(const key of ["x","y","vx","vy","rotation","angularVel"])out.body[key]=blendNumber(previous.body[key],current.body[key],t);
+ }
+ return out;
+}
+function interpolateSnapshot(previous,current,t){
+ if(!previous||!current)return current;
+ const oldObjects=new Map((previous.objects||[]).map(item=>[snapshotObjectKey(item),item]));
+ const objects=(current.objects||[]).map(item=>interpolateItem(oldObjects.get(snapshotObjectKey(item)),item,t));
+ return {...current,objects,ball:interpolateItem(previous.ball,current.ball,t)};
+}
 function applySnapshot(core,s,dt,applyUi){
  if(!s||!Array.isArray(s.objects))return;
- const alpha=1-Math.exp(-Math.max(1,Math.min(50,Number(dt)||16.67))/65);
+ // The state passed here is already interpolated between received host snapshots.
+ const alpha=1;
  const localPlayers=[...(core.playersLeft||[]),...(core.playersRight||[])];
  const localP2=localPlayers.find(isLocallyControlledP2)||null;
  diag.localPlayerFound=!!localP2;
@@ -237,8 +256,16 @@ function install(){
   }else if(latest){
    const isNew=latest.sequence>lastAppliedSequence;
    if(isNew)lastAppliedSequence=latest.sequence;
-   // Reconcile smoothly every simulation tick; update score/match flags only on new packets.
-   applySnapshot(this,latest,dt,isNew);
+   // Render 50 ms behind the newest packet so ordinary 40 Hz snapshots can be
+   // interpolated instead of chasing a succession of discrete positions.
+   let renderSnapshot=latest;
+   if(previousSnapshot&&latestSnapshotAt>previousSnapshotAt){
+    const renderAt=performance.now()-50;
+    const amount=Math.max(0,Math.min(1,(renderAt-previousSnapshotAt)/(latestSnapshotAt-previousSnapshotAt)));
+    renderSnapshot=interpolateSnapshot(previousSnapshot,latest,amount);
+   }
+   // Update score/match flags only on new packets; visual transforms are sampled each tick.
+   applySnapshot(this,renderSnapshot,dt,isNew);
   }
   const syncEnd=performance.now();
   gameUpdates++;
@@ -257,8 +284,11 @@ socket.on("engineState",state=>{
  if(lastReceivedSequence&&state.sequence>lastReceivedSequence+1)diag.sequenceGaps+=state.sequence-lastReceivedSequence-1;
  lastReceivedSequence=state.sequence;
  diag.lastSequence=state.sequence;
+ const receivedAt=performance.now();
+ if(latest){previousSnapshot=latest;previousSnapshotAt=latestSnapshotAt;}
  latest=state;
- lastPacketAt=performance.now();
+ latestSnapshotAt=receivedAt;
+ lastPacketAt=receivedAt;
  packetCount++;
 });
 const start=Date.now();
