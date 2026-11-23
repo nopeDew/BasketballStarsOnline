@@ -4,7 +4,7 @@ const socket=window.__BSO_SOCKET;
 const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
-let latest=null,previousSnapshot=null,previousSnapshotAt=0,latestSnapshotAt=0,lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
+let latest=null,snapshotBuffer=[],lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
 const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null};
 window.__BSO_SYNC_DIAG=diag;
 let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
@@ -203,6 +203,26 @@ function interpolateSnapshot(previous,current,t){
  const objects=(current.objects||[]).map(item=>interpolateItem(oldObjects.get(snapshotObjectKey(item)),item,t));
  return {...current,objects,ball:interpolateItem(previous.ball,current.ball,t)};
 }
+const INTERPOLATION_DELAY_MS=50;
+const MAX_SNAPSHOT_BUFFER=12;
+function sampleSnapshotBuffer(now){
+ if(!snapshotBuffer.length)return latest;
+ const target=now-INTERPOLATION_DELAY_MS;
+ // Keep one sample before the target and one after it, plus a small safety
+ // margin for packet jitter. This avoids holding the same frame between packets.
+ while(snapshotBuffer.length>2&&snapshotBuffer[1].receivedAt<=target)snapshotBuffer.shift();
+ const first=snapshotBuffer[0],last=snapshotBuffer[snapshotBuffer.length-1];
+ if(!first)return latest;
+ if(target<=first.receivedAt)return first.state;
+ for(let i=0;i<snapshotBuffer.length-1;i++){
+  const before=snapshotBuffer[i],after=snapshotBuffer[i+1];
+  if(target>=before.receivedAt&&target<=after.receivedAt){
+   const span=Math.max(1,after.receivedAt-before.receivedAt);
+   return interpolateSnapshot(before.state,after.state,(target-before.receivedAt)/span);
+  }
+ }
+ return last.state;
+}
 function applySnapshot(core,s,dt,applyUi){
  if(!s||!Array.isArray(s.objects))return;
  // The state passed here is already interpolated between received host snapshots.
@@ -297,14 +317,9 @@ function install(){
   }else if(latest){
    const isNew=latest.sequence>lastAppliedSequence;
    if(isNew)lastAppliedSequence=latest.sequence;
-   // Render 50 ms behind the newest packet so ordinary 40 Hz snapshots can be
-   // interpolated instead of chasing a succession of discrete positions.
-   let renderSnapshot=latest;
-   if(previousSnapshot&&latestSnapshotAt>previousSnapshotAt){
-    const renderAt=performance.now()-15;
-    const amount=Math.max(0,Math.min(1,(renderAt-previousSnapshotAt)/(latestSnapshotAt-previousSnapshotAt)));
-    renderSnapshot=interpolateSnapshot(previousSnapshot,latest,amount);
-   }
+   // Sample a 50 ms buffered timeline at the P2 render cadence. The queue
+   // guarantees interpolation between snapshots instead of periodic frame holds.
+   const renderSnapshot=sampleSnapshotBuffer(performance.now());
    // Update score/match flags only on new packets; visual transforms are sampled each tick.
    applySnapshot(this,renderSnapshot,dt,isNew);
   }
@@ -326,9 +341,9 @@ socket.on("engineState",state=>{
  lastReceivedSequence=state.sequence;
  diag.lastSequence=state.sequence;
  const receivedAt=performance.now();
- if(latest){previousSnapshot=latest;previousSnapshotAt=latestSnapshotAt;}
  latest=state;
- latestSnapshotAt=receivedAt;
+ snapshotBuffer.push({state,receivedAt});
+ if(snapshotBuffer.length>MAX_SNAPSHOT_BUFFER)snapshotBuffer.shift();
  lastPacketAt=receivedAt;
  packetCount++;
 });

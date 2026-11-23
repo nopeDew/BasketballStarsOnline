@@ -38,9 +38,10 @@ assert.ok(sync.includes('if(typeof item.blockShape==="boolean"'),
   'Player 2 must mirror host block state.');
 assert.ok(
   sync.includes("function interpolateSnapshot(previous,current,t)") &&
-  sync.includes("const renderAt=performance.now()-15;") &&
-  sync.includes("previousSnapshot=latest;previousSnapshotAt=latestSnapshotAt;"),
-  'Player 2 must interpolate between buffered host snapshots instead of chasing discrete updates.');
+  sync.includes("const INTERPOLATION_DELAY_MS=50;") &&
+  sync.includes("function sampleSnapshotBuffer(now)") &&
+  sync.includes("snapshotBuffer.push({state,receivedAt});"),
+  'Player 2 must interpolate using a jitter-tolerant rolling snapshot buffer.');
 assert.ok(sync.includes("applySnapshot(this,renderSnapshot,dt,isNew);"),
   'Player 2 must apply the interpolated snapshot on each native game update.');
 assert.ok(sync.includes("original.call(this,dt);"),
@@ -50,8 +51,8 @@ assert.ok(sync.includes("player.controller instanceof Controller"),
 
 assert.match(network, /window\.__BSO_ONLINE_MATCH\s*\?\s*remote\s*:/,
   'Online controls must pass through the shared network InputManager state.');
-assert.match(patch, /this\.game\.time\.desiredFps = 40/,
-  'Keep the original 40 Hz timing.');
+assert.match(patch, /window\.__BSO_NET_LOCAL_SIDE\) === 2\) \? 60 : 40/,
+  'Player 2 must render at 60 Hz while Player 1 keeps the 40 Hz simulation.');
 assert.match(patch, /renderer: Phaser\.AUTO,/,
   'Keep the original automatic renderer selection.');
 assert.match(patch, /window\.__BSO_PlayerObject = b\.PlayerObject/,
