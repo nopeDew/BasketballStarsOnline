@@ -31,6 +31,17 @@ assert.ok(sync.includes("function installP2ControllerHooks()") &&
   sync.includes('physics.update=function(){}') &&
   sync.includes("this.currentMove=0;this.currentDash=0;this.currentJump=false;"),
   'Player 2 must not run a duplicate physics or controller simulation.');
+
+assert.ok(sync.includes("const P2_INPUT_PREDICTION_MS=40;") &&
+  sync.includes("const isLocalP2Controller=Controller===window.__BSO_PlayerController2;") &&
+  sync.includes("if(isLocalP2Controller){") &&
+  sync.includes("this.currentSuper=false;this.currentBlockOrPump=false;"),
+  'Player 2 should predict local horizontal movement while keeping other actions host-authoritative.');
+
+assert.ok(sync.includes("const INTERPOLATION_DELAY_MS=25;") &&
+  sync.includes("function extrapolateSnapshot(state,elapsedMs)") &&
+  sync.includes("return extrapolateSnapshot(last.state,target-last.receivedAt);"),
+  'Player 2 should use lower-latency interpolation and short extrapolation through snapshot gaps.');
 assert.ok(!sync.includes("if(isLocallyControlledP2(player))continue;") &&
   sync.includes("applyObject(player,item,alpha,null);"),
   'The authoritative host snapshot must update Player 2’s own avatar too.');
