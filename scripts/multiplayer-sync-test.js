@@ -49,7 +49,8 @@ assert.ok(sync.includes('if(typeof item.blockShape==="boolean"'),
   'Player 2 must mirror host block state.');
 assert.ok(
   sync.includes("function interpolateSnapshot(previous,current,t)") &&
-  sync.includes("const INTERPOLATION_DELAY_MS=50;") &&
+  sync.includes("const INTERPOLATION_DELAY_MS=25;") &&
+  sync.includes("function extrapolateSnapshot(state,elapsedMs)") &&
   sync.includes("function sampleSnapshotBuffer(now)") &&
   sync.includes("snapshotBuffer.push({state,receivedAt});"),
   'Player 2 must interpolate using a jitter-tolerant rolling snapshot buffer.');
