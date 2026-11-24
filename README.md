@@ -7,7 +7,7 @@ An online 1v1 integration for the original **Basketball Legends 2019** game. The
 - **Both clients run the original native game simulation.** Each local player controller and physics world remains active, so movement, jumps, blocks, shots, and other actions respond immediately on the device where the key is pressed.
 - The Node server is a low-latency room/input/state relay. It does not run a second Nape world or recreate the game's physics.
 - Both players' controls are relayed into the original InputManager as soon as keys change. A short heartbeat repairs missed key-up events.
-- Player 1 publishes compact authoritative match snapshots at the original 40 Hz game cadence. Volatile delivery drops stale frames rather than queuing them.
+- Both clients run the original gameplay/physics loop at 60 Hz. Player 1 publishes compact authoritative match snapshots at the same 60 Hz cadence; volatile delivery drops stale frames rather than queuing them.
 - Player 2 predicts its own local movement in the native game loop. It does not overwrite its own moving avatar with an older host snapshot; when local input is idle, small host corrections are blended in smoothly.
 - Player 2 interpolates host snapshots for the remote player and shared game state, while preserving local simulation for its own player and locally predicted ball possession/shots.
 
@@ -36,4 +36,4 @@ Use a Node web service with `npm install` as the build command and `npm start` a
 
 ## Verification
 
-The GitHub Actions workflow installs and patches the original game, checks JavaScript syntax, and runs multiplayer architecture regression checks, including native simulation on both clients and Player 2 local prediction/reconciliation. A real two-device match is still needed to verify control feel and latency after deployment.
+The GitHub Actions workflow installs and patches the original game, checks JavaScript syntax, and runs multiplayer regression checks for 60 Hz simulation, matching snapshot cadence, native controllers on both clients, and Player 2 local prediction/reconciliation. A real two-device match is still needed to verify control feel and latency after deployment.
