@@ -25,18 +25,18 @@ assert.match(sync, /socket\.on\("engineState"/,
   'Player 2 must consume the host snapshots.');
 assert.ok(sync.includes("if(b&&p){"),
   'Player 2 must apply authoritative host body transforms for both players and the ball.');
-assert.ok(sync.includes("function installP2ControllerHooks()") &&
-  sync.includes("installP2ControllerHooks();") &&
-  sync.includes("function installP2PresentationOnly(core)") &&
-  sync.includes('physics.update=function(){}') &&
-  sync.includes("this.currentMove=0;this.currentDash=0;this.currentJump=false;"),
-  'Player 2 must not run a duplicate physics or controller simulation.');
-
-assert.ok(sync.includes("const P2_INPUT_PREDICTION_MS=40;") &&
-  sync.includes("const isLocalP2Controller=Controller===window.__BSO_PlayerController2;") &&
-  sync.includes("if(isLocalP2Controller){") &&
-  sync.includes("this.currentSuper=false;this.currentBlockOrPump=false;"),
-  'Player 2 should predict local horizontal movement while keeping other actions host-authoritative.');
+assert.doesNotMatch(sync, /physics\.update=function\(\)\{\}/,
+  'Player 2 must keep the original physics simulation running locally.');
+assert.doesNotMatch(sync, /controllerProto\.update=function\(\)/,
+  'Player 2 must keep the native player controllers active.');
+assert.match(sync, /const localP2InputActive=!!\(localP2Input\.left\|\|localP2Input\.right\|\|localP2Input\.jump/,
+  'Player 2 local input must be predicted without waiting for host snapshots.');
+assert.match(sync, /if\(side===2&&player===localP2\)\{/,
+  'Host snapshots must not rewind Player 2 while it is actively controlling its local avatar.');
+assert.match(sync, /applyObject\(player,item,0\.12,null\)/,
+  'Idle Player 2 state should reconcile smoothly instead of snapping.');
+assert.match(sync, /let protectLocalP2BallUntil=0;/,
+  'Player 2 ball possession and shot prediction should be protected from stale host snapshots.');
 
 assert.ok(sync.includes("const INTERPOLATION_DELAY_MS=25;") &&
   sync.includes("function extrapolateSnapshot(state,elapsedMs)") &&
@@ -53,7 +53,7 @@ assert.ok(
   sync.includes("function extrapolateSnapshot(state,elapsedMs)") &&
   sync.includes("function sampleSnapshotBuffer(now)") &&
   sync.includes("snapshotBuffer.push({state,receivedAt});"),
-  'Player 2 must interpolate using a jitter-tolerant rolling snapshot buffer.');
+  'Player 2 must interpolate host state and smooth jitter during reconciliation.');
 assert.ok(sync.includes("function installP2RenderLoop()") &&
   sync.includes("State.prototype.update=function(){") &&
   sync.includes("applySnapshot(core,renderSnapshot,16.6667,isNew);"),
@@ -76,4 +76,4 @@ assert.match(patch, /window\.__BSO_PlayerObject = b\.PlayerObject/,
 assert.match(network, /setInterval\(\(\)=>sendLocal\(\),100\)/,
   'Reliable input-state heartbeats must repair missed key-up events.');
 
-console.log('Original host-physics and native Player 2 controller checks passed.');
+console.log('Native local simulation and Player 2 prediction/reconciliation checks passed.');
