@@ -38,7 +38,7 @@ assert.match(sync, /applyObject\(player,item,0\.12,null\)/,
 assert.match(sync, /let protectLocalP2BallUntil=0;/,
   'Player 2 ball possession and shot prediction should be protected from stale host snapshots.');
 
-assert.ok(sync.includes("const INTERPOLATION_DELAY_MS=50;") &&
+assert.ok(sync.includes("const INTERPOLATION_MIN_MS=25,INTERPOLATION_MAX_MS=70;") &&
   sync.includes("function extrapolateSnapshot(state,elapsedMs)") &&
   sync.includes("return extrapolateSnapshot(last.state,target-last.receivedAt);"),
   'Player 2 should use buffer snapshots and briefly extrapolate when packet arrival is late.');
@@ -49,11 +49,13 @@ assert.ok(sync.includes('if(typeof item.blockShape==="boolean"'),
   'Player 2 must mirror host block state.');
 assert.ok(
   sync.includes("function interpolateSnapshot(previous,current,t)") &&
-  sync.includes("const INTERPOLATION_DELAY_MS=50;") &&
+  sync.includes("const INTERPOLATION_MIN_MS=25,INTERPOLATION_MAX_MS=70;") &&
   sync.includes("function extrapolateSnapshot(state,elapsedMs)") &&
   sync.includes("function sampleSnapshotBuffer(now)") &&
   sync.includes("snapshotBuffer.push({state,receivedAt});"),
   'Player 2 must buffer and interpolate host snapshots to smooth network jitter.');
+assert.match(sync, /function getInterpolationDelayMs\(\)\{return Math\.min\(INTERPOLATION_MAX_MS,INTERPOLATION_MIN_MS\+snapshotJitterMs\*2\);\}/,
+  'Interpolation delay must adapt to measured arrival jitter instead of adding a fixed delay.');
 assert.match(sync, /const dy=Number\.isFinite\(body\.vy\)\?body\.vy\*seconds:0/,
   'Snapshot extrapolation must keep vertical motion moving between late packets.');
 assert.match(sync, /const dr=Number\.isFinite\(body\.angularVel\)\?body\.angularVel\*seconds:0/,
