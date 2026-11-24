@@ -5,9 +5,9 @@ const params=new URLSearchParams(location.search);
 const side=Number(params.get("side")||1);
 if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;}
 let latest=null,snapshotBuffer=[],lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
-const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null};
+const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,snapshotOutHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null};
 window.__BSO_SYNC_DIAG=diag;
-let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0,snapshotJitterMs=0;
+let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,snapshotOutCount=0,diagWindowStart=performance.now(),lastPacketAt=0,snapshotJitterMs=0;
 const INTERPOLATION_MIN_MS=25,INTERPOLATION_MAX_MS=70;
 const clamp=n=>Number.isFinite(n)?n:0;
 function getInterpolationDelayMs(){return Math.min(INTERPOLATION_MAX_MS,INTERPOLATION_MIN_MS+snapshotJitterMs*2);}
@@ -21,10 +21,11 @@ function startDiagnostics(){
   diag.coreMs=+(coreMsTotal/Math.max(1,gameUpdates)).toFixed(2);
   diag.syncMs=+(syncMsTotal/Math.max(1,gameUpdates)).toFixed(2);
   diag.packetHz=+(packetCount*1000/elapsed).toFixed(1);
+  diag.snapshotOutHz=+(snapshotOutCount*1000/elapsed).toFixed(1);
   diag.packetAgeMs=lastPacketAt?Math.round(now-lastPacketAt):null;
   diag.networkJitterMs=+snapshotJitterMs.toFixed(1);
   diag.interpolationDelayMs=Math.round(getInterpolationDelayMs());
-  rafFrames=gameUpdates=packetCount=0;coreMsTotal=syncMsTotal=0;diagWindowStart=now;
+  rafFrames=gameUpdates=packetCount=snapshotOutCount=0;coreMsTotal=syncMsTotal=0;diagWindowStart=now;
  },1000);
  const installHud=()=>{
   if(!document.body){setTimeout(installHud,100);return;}
@@ -46,7 +47,9 @@ function startDiagnostics(){
     "Game updates/sec: "+diag.gameUps,
     "Core update: "+diag.coreMs+" ms",
     "Network sync: "+diag.syncMs+" ms",
-    "Host snapshots/sec: "+diag.packetHz,
+    "Socket transport: "+(socket.io&&socket.io.engine&&socket.io.engine.transport?socket.io.engine.transport.name:"connecting"),
+    "Snapshots in/sec: "+diag.packetHz,
+    "Snapshots out/sec: "+diag.snapshotOutHz,
     "Last snapshot age: "+(diag.packetAgeMs===null?"none":diag.packetAgeMs+" ms"),
     "Snapshot jitter: "+diag.networkJitterMs+" ms",
     "Interpolation buffer: "+diag.interpolationDelayMs+" ms",
@@ -323,6 +326,19 @@ function install(){
  const C=window.__BSO_MainGameCore;
  if(!C||!C.prototype||C.prototype.__bsoOnlinePatched)return false;
  if(side===2&&!installP2RenderLoop())return false;
+ if(side===2){
+  const P2Controller=window.__BSO_PlayerController2;
+  const controllerProto=P2Controller&&P2Controller.prototype;
+  if(controllerProto&&typeof controllerProto.update==="function"&&!controllerProto.__bsoControllerDebugWrapped){
+   const controllerUpdate=controllerProto.update;
+   controllerProto.update=function(){
+    const previous=window.__BSO_P2_CONTROLLER_DEBUG||{count:0};
+    window.__BSO_P2_CONTROLLER_DEBUG={count:previous.count+1,at:performance.now()};
+    return controllerUpdate.apply(this,arguments);
+   };
+   controllerProto.__bsoControllerDebugWrapped=true;
+  }
+ }
  const original=C.prototype.update;
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
@@ -336,7 +352,7 @@ function install(){
    // The original Basketball Legends gameplay loop advances in 16.67 ms fixed steps (60 Hz).
    // Publish at the same cadence so Player 2 receives a fresh authoritative frame each tick.
    const snapshotNow=performance.now();
-   if(snapshotNow-lastSend>=1000/60){lastSend=snapshotNow;socket.volatile.emit("engineState",makeSnapshot(this));}
+   if(snapshotNow-lastSend>=1000/60){lastSend=snapshotNow;snapshotOutCount++;socket.emit("engineState",makeSnapshot(this));}
   }
   const syncEnd=performance.now();
   gameUpdates++;
