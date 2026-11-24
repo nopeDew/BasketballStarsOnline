@@ -19,8 +19,10 @@ assert.match(server, /volatile\.emit\("engineState", state\)/,
 assert.doesNotMatch(server, /AuthoritativeMatch|authoritativeMatch|engineWorldState|engineBallAction/,
   'The server must not run a second physics simulation.');
 
-assert.match(sync, /socket\.volatile\.emit\("engineState",makeSnapshot\(this\)\)/,
-  'Player 1 must publish snapshots from its native game simulation.');
+assert.match(sync, /socket\.emit\("engineState",makeSnapshot\(this\)\)/,
+  'Player 1 must send snapshots without a second client-side volatile drop gate.');
+assert.doesNotMatch(sync, /socket\.volatile\.emit\("engineState",makeSnapshot\(this\)\)/,
+  'Player 1 must not discard snapshots before they reach the server.');
 assert.match(sync, /socket\.on\("engineState"/,
   'Player 2 must consume the host snapshots.');
 assert.ok(sync.includes("if(b&&p){"),
@@ -71,6 +73,8 @@ assert.ok(sync.includes("original.call(this,dt);"),
 assert.ok(sync.includes("player.controller instanceof Controller"),
   'Player 2 local avatar detection must identify its native PlayerController2 instance.');
 
+assert.match(network, /io\(\{transports:\["websocket"\],upgrade:false/,
+  'Gameplay must use a persistent WebSocket instead of falling back to long-polling.');
 assert.match(network, /window\.__BSO_ONLINE_MATCH\s*\?\s*remote\s*:/,
   'Online controls must pass through the shared network InputManager state.');
 assert.match(patch, /this\.game\.time\.desiredFps = 60/,
@@ -79,6 +83,10 @@ assert.match(patch, /e\.DESIRED_FRAME_TIME = 1 \/ 60/,
   'Both clients must advance original gameplay logic and physics at 60 Hz.');
 assert.match(sync, /snapshotNow-lastSend>=1000\/60/,
   'The host must publish authoritative snapshots at the same 60 Hz cadence.');
+assert.match(sync, /controllerProto\.update=function\(\)/,
+  'Player 2 controller activity must be visible in the diagnostics HUD.');
+assert.match(sync, /socket\.io&&socket\.io\.engine&&socket\.io\.engine\.transport/,
+  'The diagnostics HUD must expose the active socket transport.');
 assert.match(patch, /renderer: Phaser\.AUTO,/,
   'Keep the original automatic renderer selection.');
 assert.match(patch, /window\.__BSO_PlayerObject = b\.PlayerObject/,
