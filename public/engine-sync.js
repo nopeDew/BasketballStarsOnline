@@ -203,7 +203,7 @@ function interpolateSnapshot(previous,current,t){
  const objects=(current.objects||[]).map(item=>interpolateItem(oldObjects.get(snapshotObjectKey(item)),item,t));
  return {...current,objects,ball:interpolateItem(previous.ball,current.ball,t)};
 }
-const INTERPOLATION_DELAY_MS=25;
+const INTERPOLATION_DELAY_MS=17;
 const MAX_EXTRAPOLATION_MS=75;
 const MAX_SNAPSHOT_BUFFER=12;
 function extrapolateItem(item,seconds){
@@ -318,9 +318,10 @@ function install(){
   if(side===1){
    const now=Date.now();
    // Volatile snapshots keep real-time state fresh instead of queueing stale frames under load.
-   // The original Basketball Legends gameplay loop advances in 25 ms fixed steps (40 Hz).
-   // Publish at the same cadence so Player 2 isn't interpolating against a slower 30 Hz stream.
-   if(now-lastSend>=25){lastSend=now;socket.volatile.emit("engineState",makeSnapshot(this));}
+   // The original Basketball Legends gameplay loop advances in 16.67 ms fixed steps (60 Hz).
+   // Publish at the same cadence so Player 2 receives a fresh authoritative frame each tick.
+   const snapshotNow=performance.now();
+   if(snapshotNow-lastSend>=1000/60){lastSend=snapshotNow;socket.volatile.emit("engineState",makeSnapshot(this));}
   }
   const syncEnd=performance.now();
   gameUpdates++;
