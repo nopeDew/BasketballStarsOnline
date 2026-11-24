@@ -204,7 +204,6 @@ function interpolateSnapshot(previous,current,t){
  return {...current,objects,ball:interpolateItem(previous.ball,current.ball,t)};
 }
 const INTERPOLATION_DELAY_MS=25;
-const P2_INPUT_PREDICTION_MS=40;
 const MAX_EXTRAPOLATION_MS=75;
 const MAX_SNAPSHOT_BUFFER=12;
 function extrapolateItem(item,seconds){
@@ -246,37 +245,25 @@ function applySnapshot(core,s,dt,applyUi){
  diag.localPlayerGrounded=localP2?!!localP2.isGrounded:null;
  diag.localPlayerVy=localP2&&localP2.body?Math.round(localP2.body.velocity.y):null;
 
- // Predict only Player 2's horizontal presentation. The host still owns every
- // collision, jump, shot, steal, and score; this removes the input round-trip
- // from the local avatar's visible first movement.
- if(side===2&&localP2&&window.__BSO_NET_INPUTS){
-  const input=window.__BSO_NET_INPUTS[2]||{};
-  const direction=(input.right?1:0)-(input.left?1:0);
-  const predictableState=!localP2.state||localP2.state==="idle"||localP2.state==="idle_wb"||localP2.state==="run"||localP2.state==="run_wb";
-  if(direction&&localP2.isGrounded&&localP2.canAct!==false&&predictableState){
-   const source=s.objects.find(item=>item.side===localP2.SIDE&&item.playerNo===localP2.playerNo);
-   if(source&&source.body&&Number.isFinite(source.body.x)){
-    const speed=localP2.withBall?localP2.velBallX:localP2.velX;
-    const dx=direction*clamp(speed||250)*(P2_INPUT_PREDICTION_MS/1000);
-    const objects=s.objects.slice();
-    const index=objects.indexOf(source);
-    const body={...source.body,x:source.body.x+dx,vx:direction*clamp(speed||250)};
-    objects[index]={...source,x:Number.isFinite(source.x)?source.x+dx:source.x,body,state:localP2.withBall?"run_wb":"run"};
-    let ball=s.ball;
-    if(ball&&ball.state==="inHands"&&ball.side===localP2.SIDE&&ball.playerNo===localP2.playerNo){
-     ball={...ball,x:Number.isFinite(ball.x)?ball.x+dx:ball.x,body:ball.body?{...ball.body,x:ball.body.x+dx}:ball.body};
-    }
-    s={...s,objects,ball};
-   }
-  }
- }
+ // Let Player 2's native game simulation move its own player immediately.
+ // While a local control is held, do not rewind that prediction to the older
+ // host snapshot. Reconcile gently once local input is idle.
+ const localP2Input=side===2&&window.__BSO_NET_INPUTS?window.__BSO_NET_INPUTS[2]||{}:{};
+ const localP2InputActive=!!(localP2Input.left||localP2Input.right||localP2Input.jump||localP2Input.down||localP2Input.shoot||localP2Input.super);
+ if(side===2&&(localP2Input.shoot||localP2Input.super))protectLocalP2BallUntil=performance.now()+220;
+ const keepLocalP2Ball=side===2&&localP2&&(localP2.withBall||performance.now()<protectLocalP2BallUntil);
 
- // Correct ball state and possession first; ball.setState() updates native controllers.
- if(core.ball&&s.ball)applyBall(core,s.ball,alpha,localPlayers);
+ // Correct ball state and possession first; local P2 possession/shot prediction
+ // is allowed to run until the host has had time to receive the same input.
+ if(core.ball&&s.ball&&!keepLocalP2Ball)applyBall(core,s.ball,alpha,localPlayers);
  for(const item of s.objects){
   const player=Number.isFinite(item.playerNo)&&Number.isFinite(item.side)?localPlayers.find(p=>p&&p.playerNo===item.playerNo&&p.SIDE===item.side):null;
   if(!player)continue;
-  // Apply the host transform to both players, including Player 2 on its own screen.
+  if(side===2&&player===localP2){
+   if(localP2InputActive)continue;
+   applyObject(player,item,0.12,null);
+   continue;
+  }
   applyObject(player,item,alpha,null);
  }
  if(applyUi){
@@ -292,57 +279,9 @@ function applySnapshot(core,s,dt,applyUi){
   }
  }
 }
-function installP2ControllerHooks(){
- if(side!==2||!window.__BSO_ONLINE_MATCH)return;
- // Install before player instances register DragonBones callbacks in the
- // character-selection/game-start flow.
- const Player=window.__BSO_PlayerObject;
- const proto=Player&&Player.prototype;
- if(proto&&!proto.__bsoRemotePresentation){
-  const originalFrame=proto.onFrameEvent;
-  if(typeof originalFrame==="function")proto.onFrameEvent=function(){
-   if(side===2&&window.__BSO_ONLINE_MATCH)return;
-   return originalFrame.apply(this,arguments);
-  };
-  proto.__bsoRemotePresentation=true;
- }
- for(const Controller of [window.__BSO_PlayerController,window.__BSO_PlayerController2]){
-  const controllerProto=Controller&&Controller.prototype;
-  if(!controllerProto||controllerProto.__bsoRemotePresentation)continue;
-  const original=controllerProto.update;
-  const isLocalP2Controller=Controller===window.__BSO_PlayerController2;
-  if(typeof original==="function")controllerProto.update=function(){
-   if(side===2&&window.__BSO_ONLINE_MATCH){
-    if(isLocalP2Controller){
-     // Read Player 2's local keys immediately and predict horizontal movement
-     // and its run animation. Keep every gameplay action host-authoritative.
-     original.apply(this,arguments);
-     this.currentDash=0;this.currentJump=false;this.currentAction=false;
-     this.currentSuper=false;this.currentBlockOrPump=false;
-     return;
-    }
-    this.currentMove=0;this.currentDash=0;this.currentJump=false;
-    this.currentAction=false;this.currentSuper=false;this.currentBlockOrPump=false;
-    return;
-   }
-   return original.apply(this,arguments);
-  };
-  controllerProto.__bsoRemotePresentation=true;
- }
-}
-function installP2PresentationOnly(core){
- if(side!==2||!window.__BSO_ONLINE_MATCH||!core)return;
- installP2ControllerHooks();
- // Player 1 is the sole simulation authority. Player 2 still advances UI and
- // animation clocks, but never runs a second copy of gameplay physics or input.
- for(const name of ["physics","physics2"]){
-  const physics=core[name];
-  if(physics&&typeof physics.update==="function"&&!physics.__bsoRemotePresentation){
-   physics.update=function(){};
-   physics.__bsoRemotePresentation=true;
-  }
- }
-}
+// Both clients run the original controller and physics loop.
+// Player 2 predicts its own local input; host snapshots reconcile the remote state.
+let protectLocalP2BallUntil=0;
 function installP2RenderLoop(){
  if(side!==2||!window.__BSO_ONLINE_MATCH)return false;
  const State=window.__BSO_GameplayState;
@@ -368,13 +307,11 @@ function installP2RenderLoop(){
 function install(){
  const C=window.__BSO_MainGameCore;
  if(!C||!C.prototype||C.prototype.__bsoOnlinePatched)return false;
- installP2ControllerHooks();
  if(side===2&&!installP2RenderLoop())return false;
  const original=C.prototype.update;
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
   const coreStart=performance.now();
-  if(side===2)installP2PresentationOnly(this);
   original.call(this,dt);
   const coreEnd=performance.now();
   if(!this.objects||!this.objects.length)return;
@@ -391,9 +328,9 @@ function install(){
   syncMsTotal+=syncEnd-coreEnd;
  };
  C.prototype.__bsoOnlinePatched=true;
- console.info("[BSO] Typed original-game state synchronization installed. Player "+side+(side===1?" is host.":" is following host state."));
+ console.info("[BSO] Original physics and controllers are active on both clients. Player "+side+(side===1?" publishes authoritative snapshots.":" predicts local input and reconciles host snapshots."));
  const status=document.getElementById("bso-status");
- if(status)status.textContent=side===1?"Online match active · You are host":"Online match active · Synced to host";
+ if(status)status.textContent=side===1?"Online match active · Host simulation":"Online match active · Local prediction active";
  return true;
 }
 socket.on("engineState",state=>{
