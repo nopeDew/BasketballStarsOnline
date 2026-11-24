@@ -7,6 +7,7 @@ An online 1v1 integration for the original **Basketball Legends 2019** game. The
 - **Both clients run the original native game simulation.** Each local player controller and physics world remains active, so movement, jumps, blocks, shots, and other actions respond immediately on the device where the key is pressed.
 - The Node server is a low-latency room/input/state relay. It does not run a second Nape world or recreate the game's physics.
 - Both players' controls are relayed into the original InputManager as soon as keys change. A short heartbeat repairs missed key-up events.
+- Gameplay sockets use a persistent WebSocket rather than a long-polling fallback. Player 1 sends each current snapshot once to the server; the server only drops stale frames at the final delivery hop.
 - Both clients run the original gameplay/physics loop at 60 Hz. Player 1 publishes compact authoritative match snapshots at the same 60 Hz cadence; volatile delivery drops stale frames rather than queuing them.
 - Player 2 predicts its own local movement in the native game loop. It does not overwrite its own moving avatar with an older host snapshot; when local input is idle, small host corrections are blended in smoothly.
 - Player 2 adaptively buffers host snapshots (25–70 ms based on measured arrival jitter) and interpolates the remote player and shared game state. Short gaps are extrapolated in both axes and rotation, while local simulation is preserved for its own player and locally predicted ball possession/shots.
