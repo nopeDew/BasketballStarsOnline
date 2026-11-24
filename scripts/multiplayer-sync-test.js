@@ -29,8 +29,10 @@ assert.ok(sync.includes("if(b&&p){"),
   'Player 2 must apply authoritative host body transforms for both players and the ball.');
 assert.doesNotMatch(sync, /physics\.update=function\(\)\{\}/,
   'Player 2 must keep the original physics simulation running locally.');
-assert.doesNotMatch(sync, /controllerProto\.update=function\(\)/,
-  'Player 2 must keep the native player controllers active.');
+assert.match(sync, /controllerProto\.update=function\(\)/,
+  'Player 2 native controller instrumentation must wrap rather than disable the update.');
+assert.match(sync, /return controllerUpdate\.apply\(this,arguments\)/,
+  'Player 2 native controller wrapper must still invoke the original update.');
 assert.match(sync, /const localP2InputActive=!!\(localP2Input\.left\|\|localP2Input\.right\|\|localP2Input\.jump/,
   'Player 2 local input must be predicted without waiting for host snapshots.');
 assert.match(sync, /if\(side===2&&player===localP2\)\{/,
