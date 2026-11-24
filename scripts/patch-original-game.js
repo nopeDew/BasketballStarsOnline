@@ -52,15 +52,14 @@ source = replaceUnique(
   'original game core export block'
 );
 
-// Player 1 keeps the original 40 Hz simulation. Player 2 is presentation-only,
-// so it renders at 60 Hz while interpolating the host's 40 Hz snapshots.
+// Both clients run the original game simulation and render at 60 Hz.
 
 const fpsAnchor = 'this.game.time.desiredFps = 40';
 const fpsCount = source.split(fpsAnchor).length - 1;
 if (fpsCount !== 1) throw new Error('Could not uniquely locate the original Phaser frame cap (found ' + fpsCount + ').');
 source = source.replace(
   fpsAnchor,
-  'this.game.time.desiredFps = (typeof window !== "undefined" && window.__BSO_ONLINE_MATCH && Number(window.__BSO_NET_LOCAL_SIDE) === 2) ? 60 : 40'
+  'this.game.time.desiredFps = 60'
 );
 
 // Expose and hook the original game's native character selector for live online synchronization.
@@ -151,7 +150,7 @@ const randomReplacement =
 source = replaceUnique(source, randomAnchor, randomReplacement, 'original 2-player selection state');
 
 // Expose the actual gameplay state so the online client can interpolate remote
-// sprites after the original 40 Hz physics update and before Phaser renders.
+// sprites after each 60 Hz simulation step and before Phaser renders.
 source = replaceUnique(
   source,
   '    e.Name = "gameplay",\n' +
@@ -177,7 +176,14 @@ source = replaceUnique(
   'original gameplay state'
 );
 
-// Player 1 owns gameplay simulation. Player 2 renders authoritative host snapshots.
+source = replaceUnique(
+  source,
+  '        e.DESIRED_FRAME_TIME = .025,',
+  '        e.DESIRED_FRAME_TIME = 1 / 60,',
+  'original gameplay simulation step'
+);
+
+// Advance original gameplay logic and physics at 60 Hz on both clients.
 
 // Keep the original game's automatic renderer selection and frame pacing.
 if (!source.includes('renderer: Phaser.WEBGL,')) throw new Error('Could not locate the original renderer setting.');
