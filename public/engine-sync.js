@@ -203,8 +203,20 @@ function interpolateSnapshot(previous,current,t){
  const objects=(current.objects||[]).map(item=>interpolateItem(oldObjects.get(snapshotObjectKey(item)),item,t));
  return {...current,objects,ball:interpolateItem(previous.ball,current.ball,t)};
 }
-const INTERPOLATION_DELAY_MS=50;
+const INTERPOLATION_DELAY_MS=25;
+const P2_INPUT_PREDICTION_MS=40;
+const MAX_EXTRAPOLATION_MS=75;
 const MAX_SNAPSHOT_BUFFER=12;
+function extrapolateItem(item,seconds){
+ if(!item||!item.body||!Number.isFinite(item.body.x)||!Number.isFinite(item.body.vx))return item;
+ const dx=item.body.vx*seconds;
+ return {...item,x:Number.isFinite(item.x)?item.x+dx:item.x,body:{...item.body,x:item.body.x+dx}};
+}
+function extrapolateSnapshot(state,elapsedMs){
+ const seconds=Math.min(MAX_EXTRAPOLATION_MS,Math.max(0,elapsedMs))/1000;
+ if(!state||seconds<=0)return state;
+ return {...state,objects:(state.objects||[]).map(item=>extrapolateItem(item,seconds)),ball:extrapolateItem(state.ball,seconds)};
+}
 function sampleSnapshotBuffer(now){
  if(!snapshotBuffer.length)return latest;
  const target=now-INTERPOLATION_DELAY_MS;
@@ -221,7 +233,7 @@ function sampleSnapshotBuffer(now){
    return interpolateSnapshot(before.state,after.state,(target-before.receivedAt)/span);
   }
  }
- return last.state;
+ return extrapolateSnapshot(last.state,target-last.receivedAt);
 }
 function applySnapshot(core,s,dt,applyUi){
  if(!s||!Array.isArray(s.objects))return;
@@ -233,6 +245,32 @@ function applySnapshot(core,s,dt,applyUi){
  diag.localPlayerY=localP2&&localP2.body?Math.round(localP2.body.position.y):null;
  diag.localPlayerGrounded=localP2?!!localP2.isGrounded:null;
  diag.localPlayerVy=localP2&&localP2.body?Math.round(localP2.body.velocity.y):null;
+
+ // Predict only Player 2's horizontal presentation. The host still owns every
+ // collision, jump, shot, steal, and score; this removes the input round-trip
+ // from the local avatar's visible first movement.
+ if(side===2&&localP2&&window.__BSO_NET_INPUTS){
+  const input=window.__BSO_NET_INPUTS[2]||{};
+  const direction=(input.right?1:0)-(input.left?1:0);
+  const predictableState=!localP2.state||localP2.state==="idle"||localP2.state==="idle_wb"||localP2.state==="run"||localP2.state==="run_wb";
+  if(direction&&localP2.isGrounded&&localP2.canAct!==false&&predictableState){
+   const source=s.objects.find(item=>item.side===localP2.SIDE&&item.playerNo===localP2.playerNo);
+   if(source&&source.body&&Number.isFinite(source.body.x)){
+    const speed=localP2.withBall?localP2.velBallX:localP2.velX;
+    const dx=direction*clamp(speed||250)*(P2_INPUT_PREDICTION_MS/1000);
+    const objects=s.objects.slice();
+    const index=objects.indexOf(source);
+    const body={...source.body,x:source.body.x+dx,vx:direction*clamp(speed||250)};
+    objects[index]={...source,x:Number.isFinite(source.x)?source.x+dx:source.x,body,state:localP2.withBall?"run_wb":"run"};
+    let ball=s.ball;
+    if(ball&&ball.state==="inHands"&&ball.side===localP2.SIDE&&ball.playerNo===localP2.playerNo){
+     ball={...ball,x:Number.isFinite(ball.x)?ball.x+dx:ball.x,body:ball.body?{...ball.body,x:ball.body.x+dx}:ball.body};
+    }
+    s={...s,objects,ball};
+   }
+  }
+ }
+
  // Correct ball state and possession first; ball.setState() updates native controllers.
  if(core.ball&&s.ball)applyBall(core,s.ball,alpha,localPlayers);
  for(const item of s.objects){
@@ -272,8 +310,17 @@ function installP2ControllerHooks(){
   const controllerProto=Controller&&Controller.prototype;
   if(!controllerProto||controllerProto.__bsoRemotePresentation)continue;
   const original=controllerProto.update;
+  const isLocalP2Controller=Controller===window.__BSO_PlayerController2;
   if(typeof original==="function")controllerProto.update=function(){
    if(side===2&&window.__BSO_ONLINE_MATCH){
+    if(isLocalP2Controller){
+     // Read Player 2's local keys immediately and predict horizontal movement
+     // and its run animation. Keep every gameplay action host-authoritative.
+     original.apply(this,arguments);
+     this.currentDash=0;this.currentJump=false;this.currentAction=false;
+     this.currentSuper=false;this.currentBlockOrPump=false;
+     return;
+    }
     this.currentMove=0;this.currentDash=0;this.currentJump=false;
     this.currentAction=false;this.currentSuper=false;this.currentBlockOrPump=false;
     return;
