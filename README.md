@@ -4,14 +4,14 @@ An online 1v1 integration for the original **Basketball Legends 2019** game. The
 
 ## Multiplayer model
 
-- **Player 1 runs the original game's full native simulation.** Its physics, ball possession, steals, shots, blocks, rims, backboards, nets, and scoring remain in the original browser game engine.
-- The Node server is only a room/input/state relay. It does not run a second Nape world or recreate the game's physics.
-- Player 1 sends compact match snapshots to Player 2 at the original 40 Hz game cadence. Snapshot messages use volatile delivery, so stale frames are dropped instead of queued.
-- Player 2 is a presentation client, not a second simulation. It sends its controls to Player 1, disables its duplicate physics step and player-controller actions, and renders both players and the ball from the host's authoritative snapshots.
-- Player 2 interpolates a rolling buffer of host snapshots in its per-render presentation loop at 60 Hz, while Player 1 keeps the original 40 Hz simulation. Both players see the same authoritative body positions, velocities, animation states, facing direction, possession, and block state.
-- Both players' controls are relayed into the original InputManager. Input changes are sent immediately, with a low-rate heartbeat to repair missed key-up events.
+- **Both clients run the original native game simulation.** Each local player controller and physics world remains active, so movement, jumps, blocks, shots, and other actions respond immediately on the device where the key is pressed.
+- The Node server is a low-latency room/input/state relay. It does not run a second Nape world or recreate the game's physics.
+- Both players' controls are relayed into the original InputManager as soon as keys change. A short heartbeat repairs missed key-up events.
+- Player 1 publishes compact authoritative match snapshots at the original 40 Hz game cadence. Volatile delivery drops stale frames rather than queuing them.
+- Player 2 predicts its own local movement in the native game loop. It does not overwrite its own moving avatar with an older host snapshot; when local input is idle, small host corrections are blended in smoothly.
+- Player 2 interpolates host snapshots for the remote player and shared game state, while preserving local simulation for its own player and locally predicted ball possession/shots.
 
-This is **host-authoritative original-engine simulation**, not dedicated-server physics. The server relays Player 1's original simulation; it does not calculate player movement or ball physics itself.
+This is **client-predicted, host-reconciled original-engine simulation**. Player 1 remains the authority for final shared state and snapshots, while both clients simulate locally for responsive controls.
 
 ## Online features
 
@@ -36,4 +36,4 @@ Use a Node web service with `npm install` as the build command and `npm start` a
 
 ## Verification
 
-The GitHub Actions workflow installs and patches the original game, checks JavaScript syntax, and runs multiplayer architecture regression checks, including Player 2's presentation-only architecture and authoritative body updates. A real two-device match is still needed to verify control feel and latency after deployment.
+The GitHub Actions workflow installs and patches the original game, checks JavaScript syntax, and runs multiplayer architecture regression checks, including native simulation on both clients and Player 2 local prediction/reconciliation. A real two-device match is still needed to verify control feel and latency after deployment.
