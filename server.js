@@ -259,6 +259,24 @@ io.on("connection", socket => {
     }
   });
 
+  socket.on("engineSignal", payload => {
+    const room = rooms.get(socket.data.engineRoom);
+    const player = findPlayer(room, socket);
+    if (!room || !room.started || !player || !payload || typeof payload !== "object") return;
+    const opponent = room.players.find(p => p !== player);
+    if (!opponent || !opponent.socketId) return;
+    let signal = null;
+    if (payload.description && typeof payload.description.sdp === "string" &&
+        payload.description.sdp.length <= 24000 &&
+        (payload.description.type === "offer" || payload.description.type === "answer")) {
+      signal = { side: player.side, description: payload.description };
+    } else if (payload.candidate && typeof payload.candidate.candidate === "string" &&
+        payload.candidate.candidate.length <= 4096) {
+      signal = { side: player.side, candidate: payload.candidate };
+    }
+    if (signal) io.to(opponent.socketId).emit("engineSignal", signal);
+  });
+
   // Player 1 is the authoritative simulation. Player 2 receives its snapshots.
   socket.on("engineState", state => {
     const room = rooms.get(socket.data.engineRoom);
