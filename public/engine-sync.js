@@ -48,6 +48,10 @@ function startDiagnostics(){
     "Core update: "+diag.coreMs+" ms",
     "Network sync: "+diag.syncMs+" ms",
     "Socket transport: "+(socket.io&&socket.io.engine&&socket.io.engine.transport?socket.io.engine.transport.name:"connecting"),
+    "WebRTC: "+(window.__BSO_RTC_DEBUG?window.__BSO_RTC_DEBUG.peer:"unavailable"),
+    "State channel: "+(window.__BSO_RTC_DEBUG?window.__BSO_RTC_DEBUG.stateChannel:"closed"),
+    "Input channel: "+(window.__BSO_RTC_DEBUG?window.__BSO_RTC_DEBUG.inputChannel:"closed"),
+    "State buffer: "+(window.__BSO_RTC_DEBUG?window.__BSO_RTC_DEBUG.stateBuffered||0:0),
     "Snapshots in/sec: "+diag.packetHz,
     "Snapshots out/sec: "+diag.snapshotOutHz,
     "Last snapshot age: "+(diag.packetAgeMs===null?"none":diag.packetAgeMs+" ms"),
@@ -326,23 +330,27 @@ function install(){
  const C=window.__BSO_MainGameCore;
  if(!C||!C.prototype||C.prototype.__bsoOnlinePatched)return false;
  if(side===2&&!installP2RenderLoop())return false;
- if(side===2){
-  const P2Controller=window.__BSO_PlayerController2;
-  const controllerProto=P2Controller&&P2Controller.prototype;
-  if(controllerProto&&typeof controllerProto.update==="function"&&!controllerProto.__bsoControllerDebugWrapped){
-   const controllerUpdate=controllerProto.update;
-   controllerProto.update=function(){
-    const previous=window.__BSO_P2_CONTROLLER_DEBUG||{count:0};
-    window.__BSO_P2_CONTROLLER_DEBUG={count:previous.count+1,at:performance.now()};
-    return controllerUpdate.apply(this,arguments);
-   };
-   controllerProto.__bsoControllerDebugWrapped=true;
-  }
+function installP2ControllerDebug(core){
+ if(side!==2)return;
+ const players=[...(core.playersLeft||[]),...(core.playersRight||[])];
+ for(const player of players){
+  if(!isLocallyControlledP2(player))continue;
+  const controller=player.controller;
+  if(!controller||controller.__bsoControllerDebugWrapped||typeof controller.update!=="function")continue;
+  const originalUpdate=controller.update;
+  controller.update=function(){
+   const previous=window.__BSO_P2_CONTROLLER_DEBUG||{count:0};
+   window.__BSO_P2_CONTROLLER_DEBUG={count:previous.count+1,at:performance.now()};
+   return originalUpdate.apply(this,arguments);
+  };
+  controller.__bsoControllerDebugWrapped=true;
  }
+}
  const original=C.prototype.update;
  C.prototype.update=function(dt){
   window.__BSO_GAMEPLAY_ACTIVE=true;
   const coreStart=performance.now();
+  if(side===2)installP2ControllerDebug(this);
   original.call(this,dt);
   const coreEnd=performance.now();
   if(!this.objects||!this.objects.length)return;
@@ -352,7 +360,7 @@ function install(){
    // The original Basketball Legends gameplay loop advances in 16.67 ms fixed steps (60 Hz).
    // Publish at the same cadence so Player 2 receives a fresh authoritative frame each tick.
    const snapshotNow=performance.now();
-   if(snapshotNow-lastSend>=1000/60){lastSend=snapshotNow;snapshotOutCount++;socket.emit("engineState",makeSnapshot(this));}
+   if(snapshotNow-lastSend>=1000/60){lastSend=snapshotNow;snapshotOutCount++;const state=makeSnapshot(this);if(typeof window.__BSO_SEND_STATE==="function")window.__BSO_SEND_STATE(state);else socket.emit("engineState",state);}
   }
   const syncEnd=performance.now();
   gameUpdates++;
@@ -365,7 +373,7 @@ function install(){
  if(status)status.textContent=side===1?"Online match active · Host simulation":"Online match active · Local prediction active";
  return true;
 }
-socket.on("engineState",state=>{
+function receiveHostSnapshot(state){
  if(side!==2||!state||!Number.isSafeInteger(state.sequence))return;
  if(state.sequence<=lastReceivedSequence)return;
  if(lastReceivedSequence&&state.sequence>lastReceivedSequence+1)diag.sequenceGaps+=state.sequence-lastReceivedSequence-1;
@@ -382,7 +390,10 @@ socket.on("engineState",state=>{
  if(snapshotBuffer.length>MAX_SNAPSHOT_BUFFER)snapshotBuffer.shift();
  lastPacketAt=receivedAt;
  packetCount++;
-});
+}
+window.__BSO_RECEIVE_STATE=receiveHostSnapshot;
+if(typeof window.__BSO_FLUSH_REALTIME_STATES==="function")window.__BSO_FLUSH_REALTIME_STATES();
+socket.on("engineState",receiveHostSnapshot);
 const start=Date.now();
 const timer=setInterval(()=>{
  if(install()){clearInterval(timer);return;}
