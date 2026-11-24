@@ -203,13 +203,23 @@ function interpolateSnapshot(previous,current,t){
  const objects=(current.objects||[]).map(item=>interpolateItem(oldObjects.get(snapshotObjectKey(item)),item,t));
  return {...current,objects,ball:interpolateItem(previous.ball,current.ball,t)};
 }
-const INTERPOLATION_DELAY_MS=17;
+const INTERPOLATION_DELAY_MS=50; // Three 60 Hz frames absorb normal packet-arrival jitter.
 const MAX_EXTRAPOLATION_MS=75;
 const MAX_SNAPSHOT_BUFFER=12;
 function extrapolateItem(item,seconds){
- if(!item||!item.body||!Number.isFinite(item.body.x)||!Number.isFinite(item.body.vx))return item;
- const dx=item.body.vx*seconds;
- return {...item,x:Number.isFinite(item.x)?item.x+dx:item.x,body:{...item.body,x:item.body.x+dx}};
+ if(!item||!item.body)return item;
+ const body=item.body;
+ const dx=Number.isFinite(body.vx)?body.vx*seconds:0;
+ const dy=Number.isFinite(body.vy)?body.vy*seconds:0;
+ const dr=Number.isFinite(body.angularVel)?body.angularVel*seconds:0;
+ const out={...item,body:{...body}};
+ if(Number.isFinite(body.x))out.body.x=body.x+dx;
+ if(Number.isFinite(body.y))out.body.y=body.y+dy;
+ if(Number.isFinite(body.rotation))out.body.rotation=body.rotation+dr;
+ if(Number.isFinite(item.x))out.x=item.x+dx;
+ if(Number.isFinite(item.y))out.y=item.y+dy;
+ if(Number.isFinite(item.r))out.r=item.r+dr;
+ return out;
 }
 function extrapolateSnapshot(state,elapsedMs){
  const seconds=Math.min(MAX_EXTRAPOLATION_MS,Math.max(0,elapsedMs))/1000;
