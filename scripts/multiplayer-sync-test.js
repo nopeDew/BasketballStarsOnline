@@ -38,7 +38,7 @@ assert.match(sync, /applyObject\(player,item,0\.12,null\)/,
 assert.match(sync, /let protectLocalP2BallUntil=0;/,
   'Player 2 ball possession and shot prediction should be protected from stale host snapshots.');
 
-assert.ok(sync.includes("const INTERPOLATION_DELAY_MS=25;") &&
+assert.ok(sync.includes("const INTERPOLATION_DELAY_MS=17;") &&
   sync.includes("function extrapolateSnapshot(state,elapsedMs)") &&
   sync.includes("return extrapolateSnapshot(last.state,target-last.receivedAt);"),
   'Player 2 should use lower-latency interpolation and short extrapolation through snapshot gaps.');
@@ -49,7 +49,7 @@ assert.ok(sync.includes('if(typeof item.blockShape==="boolean"'),
   'Player 2 must mirror host block state.');
 assert.ok(
   sync.includes("function interpolateSnapshot(previous,current,t)") &&
-  sync.includes("const INTERPOLATION_DELAY_MS=25;") &&
+  sync.includes("const INTERPOLATION_DELAY_MS=17;") &&
   sync.includes("function extrapolateSnapshot(state,elapsedMs)") &&
   sync.includes("function sampleSnapshotBuffer(now)") &&
   sync.includes("snapshotBuffer.push({state,receivedAt});"),
@@ -59,7 +59,7 @@ assert.ok(sync.includes("function installP2RenderLoop()") &&
   sync.includes("applySnapshot(core,renderSnapshot,16.6667,isNew);"),
   'Player 2 must apply interpolated host snapshots after the original per-render update.');
 assert.ok(!sync.includes("applySnapshot(this,renderSnapshot,dt,isNew);"),
-  'Player 2 must not apply interpolated snapshots only inside the 40 Hz simulation loop.');
+  'Player 2 must not apply interpolated snapshots only inside the fixed-step simulation loop.');
 assert.ok(sync.includes("original.call(this,dt);"),
   'Both clients must keep the original game-core update.');
 assert.ok(sync.includes("player.controller instanceof Controller"),
@@ -67,8 +67,12 @@ assert.ok(sync.includes("player.controller instanceof Controller"),
 
 assert.match(network, /window\.__BSO_ONLINE_MATCH\s*\?\s*remote\s*:/,
   'Online controls must pass through the shared network InputManager state.');
-assert.match(patch, /window\.__BSO_NET_LOCAL_SIDE\) === 2\) \? 60 : 40/,
-  'Player 2 must render at 60 Hz while Player 1 keeps the 40 Hz simulation.');
+assert.match(patch, /this\.game\.time\.desiredFps = 60/,
+  'Both clients must render at 60 FPS.');
+assert.match(patch, /e\.DESIRED_FRAME_TIME = 1 \/ 60/,
+  'Both clients must advance original gameplay logic and physics at 60 Hz.');
+assert.match(sync, /snapshotNow-lastSend>=1000\/60/,
+  'The host must publish authoritative snapshots at the same 60 Hz cadence.');
 assert.match(patch, /renderer: Phaser\.AUTO,/,
   'Keep the original automatic renderer selection.');
 assert.match(patch, /window\.__BSO_PlayerObject = b\.PlayerObject/,
@@ -76,4 +80,4 @@ assert.match(patch, /window\.__BSO_PlayerObject = b\.PlayerObject/,
 assert.match(network, /setInterval\(\(\)=>sendLocal\(\),100\)/,
   'Reliable input-state heartbeats must repair missed key-up events.');
 
-console.log('Native local simulation and Player 2 prediction/reconciliation checks passed.');
+console.log('60 Hz native simulation and Player 2 prediction/reconciliation checks passed.');
