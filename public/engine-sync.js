@@ -7,8 +7,10 @@ if(!socket){console.error("[BSO] Socket.IO client was not initialized.");return;
 let latest=null,snapshotBuffer=[],lastSend=0,snapshotSequence=0,lastReceivedSequence=0,lastAppliedSequence=0;
 const diag={fps:0,gameUps:0,coreMs:0,syncMs:0,packetHz:0,packetAgeMs:null,sequenceGaps:0,lastSequence:0,localPlayerFound:false,localPlayerY:null,localPlayerGrounded:null,localPlayerVy:null};
 window.__BSO_SYNC_DIAG=diag;
-let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0;
+let rafFrames=0,gameUpdates=0,coreMsTotal=0,syncMsTotal=0,packetCount=0,diagWindowStart=performance.now(),lastPacketAt=0,snapshotJitterMs=0;
+const INTERPOLATION_MIN_MS=25,INTERPOLATION_MAX_MS=70;
 const clamp=n=>Number.isFinite(n)?n:0;
+function getInterpolationDelayMs(){return Math.min(INTERPOLATION_MAX_MS,INTERPOLATION_MIN_MS+snapshotJitterMs*2);}
 function startDiagnostics(){
  const tick=()=>{rafFrames++;requestAnimationFrame(tick);};
  requestAnimationFrame(tick);
@@ -20,6 +22,8 @@ function startDiagnostics(){
   diag.syncMs=+(syncMsTotal/Math.max(1,gameUpdates)).toFixed(2);
   diag.packetHz=+(packetCount*1000/elapsed).toFixed(1);
   diag.packetAgeMs=lastPacketAt?Math.round(now-lastPacketAt):null;
+  diag.networkJitterMs=+snapshotJitterMs.toFixed(1);
+  diag.interpolationDelayMs=Math.round(getInterpolationDelayMs());
   rafFrames=gameUpdates=packetCount=0;coreMsTotal=syncMsTotal=0;diagWindowStart=now;
  },1000);
  const installHud=()=>{
@@ -44,6 +48,8 @@ function startDiagnostics(){
     "Network sync: "+diag.syncMs+" ms",
     "Host snapshots/sec: "+diag.packetHz,
     "Last snapshot age: "+(diag.packetAgeMs===null?"none":diag.packetAgeMs+" ms"),
+    "Snapshot jitter: "+diag.networkJitterMs+" ms",
+    "Interpolation buffer: "+diag.interpolationDelayMs+" ms",
     "Sequence gaps: "+diag.sequenceGaps,
     "Last sequence: "+diag.lastSequence,
     "Remote input packets: "+remote,
@@ -203,7 +209,6 @@ function interpolateSnapshot(previous,current,t){
  const objects=(current.objects||[]).map(item=>interpolateItem(oldObjects.get(snapshotObjectKey(item)),item,t));
  return {...current,objects,ball:interpolateItem(previous.ball,current.ball,t)};
 }
-const INTERPOLATION_DELAY_MS=50; // Three 60 Hz frames absorb normal packet-arrival jitter.
 const MAX_EXTRAPOLATION_MS=75;
 const MAX_SNAPSHOT_BUFFER=12;
 function extrapolateItem(item,seconds){
@@ -228,7 +233,7 @@ function extrapolateSnapshot(state,elapsedMs){
 }
 function sampleSnapshotBuffer(now){
  if(!snapshotBuffer.length)return latest;
- const target=now-INTERPOLATION_DELAY_MS;
+ const target=now-getInterpolationDelayMs();
  // Keep one sample before the target and one after it, plus a small safety
  // margin for packet jitter. This avoids holding the same frame between packets.
  while(snapshotBuffer.length>2&&snapshotBuffer[1].receivedAt<=target)snapshotBuffer.shift();
@@ -351,6 +356,11 @@ socket.on("engineState",state=>{
  lastReceivedSequence=state.sequence;
  diag.lastSequence=state.sequence;
  const receivedAt=performance.now();
+ if(lastPacketAt){
+  const interval=receivedAt-lastPacketAt;
+  const deviation=Math.abs(interval-(1000/60));
+  snapshotJitterMs=snapshotJitterMs===0?deviation:snapshotJitterMs*0.9+deviation*0.1;
+ }
  latest=state;
  snapshotBuffer.push({state,receivedAt});
  if(snapshotBuffer.length>MAX_SNAPSHOT_BUFFER)snapshotBuffer.shift();
