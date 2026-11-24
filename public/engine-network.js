@@ -61,6 +61,23 @@ window.__BSO_UPDATE_NET_INPUTS=(who,next)=>{
  inputs[who]={...next};
  if(who===2){window.__BSO_P2_INPUT_DEBUG={...inputs[2],move:(inputs[2].right?1:0)-(inputs[2].left?1:0),at:Date.now()};}
 };
+const rtcDebug={peer:"off",ice:"off",stateChannel:"closed",inputChannel:"closed",stateSent:0,stateReceived:0,inputSent:0,inputReceived:0,fallbackState:0,fallbackInput:0};
+window.__BSO_RTC_DEBUG=rtcDebug;
+let peerConnection=null,stateChannel=null,inputChannel=null,pendingIceCandidates=[],pendingRealtimeStates=[];
+function refreshRtcDebug(){rtcDebug.peer=peerConnection?peerConnection.connectionState:"off";rtcDebug.ice=peerConnection?peerConnection.iceConnectionState:"off";rtcDebug.stateChannel=stateChannel?stateChannel.readyState:"closed";rtcDebug.inputChannel=inputChannel?inputChannel.readyState:"closed";rtcDebug.stateBuffered=stateChannel?stateChannel.bufferedAmount:0;}
+function handleRemoteInput(packet){if(!packet||Number(packet.side)!==remoteSide)return;remoteState={...(packet.actions||{})};window.__BSO_UPDATE_NET_INPUTS(remoteSide,remoteState);remotePackets++;window.__BSO_REMOTE_INPUT_PACKETS=remotePackets;if(remotePackets===1)status("Opponent connection confirmed · Player "+remoteSide+" controls relayed");}
+function handleRealtimeState(state){if(side!==2||!state||!Number.isSafeInteger(state.sequence))return;if(typeof window.__BSO_RECEIVE_STATE==="function")window.__BSO_RECEIVE_STATE(state);else{pendingRealtimeStates.push(state);if(pendingRealtimeStates.length>8)pendingRealtimeStates.shift();}}
+window.__BSO_FLUSH_REALTIME_STATES=()=>{while(pendingRealtimeStates.length&&typeof window.__BSO_RECEIVE_STATE==="function")window.__BSO_RECEIVE_STATE(pendingRealtimeStates.shift());};
+function handleDataChannelMessage(event){let packet;try{packet=JSON.parse(typeof event.data==="string"?event.data:new TextDecoder().decode(event.data));}catch(error){return;}if(packet.type==="input"){rtcDebug.inputReceived++;handleRemoteInput(packet);}else if(packet.type==="state"){rtcDebug.stateReceived++;handleRealtimeState(packet.state);}}
+function attachDataChannel(channel){channel.binaryType="arraybuffer";channel.onopen=()=>{refreshRtcDebug();if(channel.label==="bso-input")sendLocal();status("Direct game connection ready · "+channel.label+" channel open");};channel.onclose=refreshRtcDebug;channel.onerror=refreshRtcDebug;channel.onmessage=handleDataChannelMessage;if(channel.label==="bso-input")inputChannel=channel;else if(channel.label==="bso-state")stateChannel=channel;refreshRtcDebug();}
+function sendRealtimeInput(actionsState){const packet=JSON.stringify({type:"input",side,actions:actionsState});if(inputChannel&&inputChannel.readyState==="open"){try{inputChannel.send(packet);rtcDebug.inputSent++;return true;}catch(error){refreshRtcDebug();}}if(socket.connected&&ready){socket.emit("engineInput",{actions:actionsState});rtcDebug.fallbackInput++;return true;}return false;}
+window.__BSO_SEND_STATE=state=>{const packet=JSON.stringify({type:"state",state});if(stateChannel&&stateChannel.readyState==="open"){if(stateChannel.bufferedAmount>65536)return "webrtc-drop";try{stateChannel.send(packet);rtcDebug.stateSent++;return "webrtc";}catch(error){refreshRtcDebug();}}if(socket.connected&&ready){socket.emit("engineState",state);rtcDebug.fallbackState++;return "socket";}return "offline";};
+function closePeerConnection(){if(peerConnection){try{peerConnection.close();}catch(error){}}peerConnection=null;stateChannel=null;inputChannel=null;pendingIceCandidates=[];refreshRtcDebug();}
+async function flushIceCandidates(){if(!peerConnection||!peerConnection.remoteDescription)return;const queued=pendingIceCandidates.splice(0);for(const candidate of queued){try{await peerConnection.addIceCandidate(candidate);}catch(error){console.warn("[BSO] Ignoring WebRTC ICE candidate",error);}}}
+function newPeerConnection(){const pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"},{urls:"stun:stun1.l.google.com:19302"}]});pc.onicecandidate=event=>{if(event.candidate&&socket.connected)socket.emit("engineSignal",{candidate:event.candidate});};pc.onconnectionstatechange=refreshRtcDebug;pc.oniceconnectionstatechange=refreshRtcDebug;pc.ondatachannel=event=>attachDataChannel(event.channel);return pc;}
+async function startPeerConnection(){if(!window.RTCPeerConnection||!socket.connected||!ready||peerConnection)return;closePeerConnection();peerConnection=newPeerConnection();if(side===1){attachDataChannel(peerConnection.createDataChannel("bso-input"));attachDataChannel(peerConnection.createDataChannel("bso-state",{ordered:false,maxRetransmits:0}));try{const offer=await peerConnection.createOffer();await peerConnection.setLocalDescription(offer);socket.emit("engineSignal",{description:peerConnection.localDescription});}catch(error){console.warn("[BSO] Could not create direct game connection",error);closePeerConnection();}}refreshRtcDebug();}
+async function handleRtcSignal(packet){if(!packet||!window.RTCPeerConnection)return;try{if(packet.description){if(!peerConnection)peerConnection=newPeerConnection();await peerConnection.setRemoteDescription(packet.description);await flushIceCandidates();if(packet.description.type==="offer"){const answer=await peerConnection.createAnswer();await peerConnection.setLocalDescription(answer);socket.emit("engineSignal",{description:peerConnection.localDescription});}}else if(packet.candidate){if(!peerConnection)return;if(peerConnection.remoteDescription)await peerConnection.addIceCandidate(packet.candidate);else pendingIceCandidates.push(packet.candidate);}}catch(error){console.warn("[BSO] WebRTC negotiation issue; server relay remains available",error);}refreshRtcDebug();}
+
 window.__BSO_CONSUME_NET_DASH=(who,direction)=>{
  const d=dashPulse[who]||{};
  if(direction){const value=!!d[direction];d[direction]=false;return value;}
@@ -102,7 +119,7 @@ window.__BSO_INSTALL_INPUT_MANAGER=InputManager=>{
  if(status)status.textContent="Original game input manager connected · both player slots network-enabled";
 };
 function keyLabel(code){return ({ArrowLeft:"←",ArrowRight:"→",ArrowUp:"↑",ArrowDown:"↓",Space:"SPACE"})[code]||(code.startsWith("Key")?code.slice(3):String(code||"").toUpperCase())}
-function sendLocal(volatile=false){if(socket.connected&&ready){const packet={actions:localState};if(volatile)socket.volatile.emit("engineInput",packet);else socket.emit("engineInput",packet)}}
+function sendLocal(volatile=false){if(!ready)return;if(volatile&&socket.connected){socket.volatile.emit("engineInput",{actions:localState});return;}sendRealtimeInput(localState)}
 function setAction(action,down){
  if(!!localState[action]===down)return;
  localState[action]=down;
@@ -249,7 +266,7 @@ socket.on("engineRoomJoined",r=>{
  if(window.__BSO_SELECTION_OPEN_PENDING)notifySelectionOpened();
  status("Room "+r.code+" connected · You control Player "+side+" · syncing opponent");
 });
-socket.on("engineGameStart",()=>status("Both players are in · choose your characters, then press PLAY"));
+socket.on("engineGameStart",()=>{status("Both players are in · opening direct game connection…");startPeerConnection();});
 socket.on("engineSelectionProgress",info=>{
  if(info&&info.ready<2)status("Selection ready · waiting for the other player ("+info.ready+"/2)");
 });
@@ -265,19 +282,13 @@ socket.on("engineSelectionStart",info=>{
 });
 let remotePackets=0;
 window.__BSO_REMOTE_INPUT_PACKETS=0;
-socket.on("engineRemoteInput",packet=>{
- if(packet.side!==remoteSide)return;
- remoteState={...(packet.actions||{})};
- window.__BSO_UPDATE_NET_INPUTS(remoteSide,remoteState);
- remotePackets++;window.__BSO_REMOTE_INPUT_PACKETS=remotePackets;
- if(remotePackets===1)status("Opponent connection confirmed · Player "+remoteSide+" controls relayed");
-
-});
+socket.on("engineRemoteInput",handleRemoteInput);
+socket.on("engineSignal",handleRtcSignal);
 socket.on("engineOpponentDisconnected",()=>returnToLoadingScreen("Opponent left. Returning to the lobby…"));
 socket.on("engineOpponentConnectionLost",info=>status("Opponent connection interrupted · waiting up to "+Math.round((info&&info.gracePeriodMs||30000)/1000)+" seconds for reconnection…"));
 socket.on("engineOpponentReconnected",()=>status("Opponent reconnected · match connection restored."));
 socket.on("engineError",message=>status(message));
-socket.on("disconnect",()=>{releaseAll();status("Connection lost. Reconnecting…")});
+socket.on("disconnect",()=>{releaseAll();closePeerConnection();status("Connection lost. Reconnecting…")});
 window.addEventListener("keydown",event=>{
  if(!event.isTrusted)return;
  if(capture){
@@ -298,7 +309,7 @@ window.addEventListener("keyup",event=>{
 },true);
 socket.on("engineOpponentLeft",()=>returnToLoadingScreen("Opponent left. Returning to the lobby…"));
 window.addEventListener("blur",releaseAll);
-window.addEventListener("beforeunload",releaseAll);
+window.addEventListener("beforeunload",()=>{releaseAll();closePeerConnection()});
 // Keep the lobby/control settings visible during setup, then get the panel completely off the court.
 setInterval(()=>{
  const panel=document.getElementById("bso-network");
